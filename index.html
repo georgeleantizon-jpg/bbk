@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BuoBuo Ka Pre-Order Form</title>
-    <!-- Load Tailwind CSS for styling -->
+    <title>BuoBuo Ka Pre-Order System</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Configure Tailwind for Inter font and custom colors -->
     <script>
         tailwind.config = {
             theme: {
@@ -15,9 +13,9 @@
                         sans: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        'primary': '#10b981', /* Emerald for a fresh, commerce feel */
-                        'primary-dark': '#059669',
-                        'background': '#f9fafb',
+                        'primary': '#059669', /* Emerald Green */
+                        'secondary': '#3b82f6', /* Blue */
+                        'background': '#f3f4f6',
                         'card': '#ffffff',
                     }
                 }
@@ -28,56 +26,44 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
     </style>
 </head>
-<body class="bg-background min-h-screen flex items-center justify-center p-4 font-sans">
+<body class="bg-background min-h-screen font-sans">
 
-    <div id="app-container" class="w-full max-w-md bg-card shadow-2xl rounded-xl p-8 space-y-6 transform transition duration-300 border border-gray-100">
-        
-        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Place Your Pre-Order</h1>
-        <p class="text-center text-sm text-gray-500">
-            Securely reserve your item. Your unique customer ID will be attached to this order.
-        </p>
-
-        <!-- Form Inputs -->
-        <div class="space-y-4">
-            <div>
-                <label for="customer-name" class="block text-sm font-medium text-gray-700">Full Name</label>
-                <input type="text" id="customer-name" placeholder="John Doe" 
-                       class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
-            </div>
-            <div>
-                <label for="customer-email" class="block text-sm font-medium text-gray-700">Email Address</label>
-                <input type="email" id="customer-email" placeholder="john@example.com" 
-                       class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
-            </div>
-            <div>
-                <label for="item-name" class="block text-sm font-medium text-gray-700">Item to Pre-Order</label>
-                <select id="item-name" 
-                        class="mt-1 w-full p-3 border border-gray-300 bg-white rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm">
-                    <option value="Product X">Product X (Premium)</option>
-                    <option value="Product Y">Product Y (Standard)</option>
-                    <option value="Service Z">Service Z (Consultation)</option>
-                </select>
-            </div>
-            <div class="flex space-x-4">
-                <div class="flex-1">
-                    <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
-                    <input type="number" id="quantity" value="1" min="1" 
-                           class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
-                </div>
-            </div>
-
-            <!-- Status Message Display -->
-            <div id="status-message" class="text-center h-6 text-sm font-medium">
-                 Initializing connection...
-            </div>
-
-            <button onclick="submitPreOrder()" id="submit-button" disabled
-                    class="w-full py-3 px-4 bg-primary text-white font-semibold rounded-lg shadow-lg hover:bg-primary-dark transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01]">
-                Submit Pre-Order
-            </button>
+    <!-- Header and Navigation -->
+    <header class="bg-card shadow-md">
+        <div class="container mx-auto p-4 flex justify-between items-center max-w-7xl">
+            <h1 class="text-2xl font-extrabold text-primary">BuoBuo Ka Pre-Order</h1>
+            <nav class="space-x-4">
+                <button onclick="renderModeSelection()" class="text-gray-600 hover:text-primary font-medium transition duration-150 p-2 rounded-lg">
+                    🛒 Order Builder
+                </button>
+                <button onclick="renderDashboardAccess()" class="text-gray-600 hover:text-secondary font-medium transition duration-150 bg-secondary/10 px-3 py-2 rounded-lg">
+                    📊 Manager Dashboard
+                </button>
+            </nav>
         </div>
-        
-    </div>
+    </header>
+
+    <!-- Main Content Area & Receipt Container -->
+    <main class="container mx-auto p-8 max-w-7xl">
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Order Steps/Dashboard Area -->
+            <div id="content-area" class="lg:w-2/3 bg-card p-6 rounded-xl shadow-lg border border-gray-100 min-h-[600px]">
+                <!-- Dynamic content will load here -->
+            </div>
+            
+            <!-- Receipt/Status Sidebar -->
+            <div id="receipt-area" class="lg:w-1/3 bg-card p-6 rounded-xl shadow-lg border border-gray-100 min-h-[300px]">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2 text-gray-800">Order Summary</h2>
+                <!-- Receipt content will load here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Status Bar -->
+    <footer class="fixed bottom-0 left-0 w-full bg-gray-800 text-white text-sm p-2 text-center">
+        <span id="auth-status">Initializing connection...</span>
+    </footer>
+
 
     <!-- Firebase Initialization and Application Logic -->
     <script type="module">
@@ -86,26 +72,32 @@
         // ----------------------------------------------------------------------
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, setLogLevel, onSnapshot, query, where, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Enable Firebase debug logging
         setLogLevel('Debug');
 
         // ----------------------------------------------------------------------
-        // 2. GLOBAL STATE AND INITIALIZATION
+        // 2. GLOBAL STATE
         // ----------------------------------------------------------------------
         let db;
         let auth;
-        let userId = null; // The unique customer ID we'll attach to the order
+        let userId = null;
+        let currentView = 'order_builder';
+        const MANAGER_PIN = '1234'; // PIN for dashboard access
 
-        const statusMessageEl = document.getElementById('status-message');
-        const submitButtonEl = document.getElementById('submit-button');
-        
-        // Form element references
-        const nameEl = document.getElementById('customer-name');
-        const emailEl = document.getElementById('customer-email');
-        const itemEl = document.getElementById('item-name');
-        const quantityEl = document.getElementById('quantity');
+        // Order State
+        let order = {
+            mode: null,
+            preset: null,
+            items: [],
+            total: 0,
+            customerDetails: {},
+        };
+
+        const contentArea = document.getElementById('content-area');
+        const receiptArea = document.getElementById('receipt-area');
+        const authStatusEl = document.getElementById('auth-status');
         
         // ----------------------------------------------------------------------
         // *** CONFIGURATION: USING YOUR PROVIDED FIREBASE DETAILS ***
@@ -126,19 +118,21 @@
 
         if (!firebaseConfig || !firebaseConfig.apiKey) {
             console.error("Firebase config is critically missing.");
-            statusMessageEl.textContent = "Critical Error: Configuration Missing.";
+            authStatusEl.textContent = "Critical Error: Configuration Missing.";
         } else {
             initializeFirebase();
         }
 
+        // ----------------------------------------------------------------------
+        // 3. FIREBASE INITIALIZATION & AUTH
+        // ----------------------------------------------------------------------
         async function initializeFirebase() {
             try {
-                // Initialize the Firebase App
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 3. AUTHENTICATION SETUP (Silent Sign-in)
+                // Silent Sign-in
                 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
                 if (initialAuthToken) {
@@ -147,95 +141,383 @@
                     await signInAnonymously(auth);
                 }
 
-                // 4. AUTH STATE CHANGE LISTENER
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        // User is now signed in (anonymously or via custom token)
                         userId = user.uid;
-                        submitButtonEl.disabled = false;
-                        submitButtonEl.textContent = "Submit Pre-Order";
-                        console.log(`Unique Customer ID: ${userId}`);
-                        statusMessageEl.textContent = "Database Connected. Ready to take order.";
-                        statusMessageEl.classList.remove('text-red-500');
-                        statusMessageEl.classList.add('text-primary-dark');
+                        authStatusEl.textContent = `✅ Database Connected. User ID: ${userId}`;
+                        authStatusEl.classList.remove('bg-gray-800');
+                        authStatusEl.classList.add('bg-primary');
                     } else {
                         userId = null;
-                        submitButtonEl.disabled = true;
-                        submitButtonEl.textContent = "Authentication Failed";
-                        statusMessageEl.textContent = "Failed to secure customer identity.";
-                        statusMessageEl.classList.add('text-red-500');
+                        authStatusEl.textContent = `❌ Authentication Failed. Submissions disabled.`;
+                        authStatusEl.classList.remove('bg-gray-800');
+                        authStatusEl.classList.add('bg-red-600');
                     }
                 });
 
             } catch (error) {
                 console.error("Error during Firebase initialization or sign-in:", error);
-                statusMessageEl.textContent = `Initialization Error: ${error.code || 'Unknown'}`;
-                statusMessageEl.classList.add('text-red-500');
+                authStatusEl.textContent = `❌ Initialization Error: ${error.code || 'Unknown'}`;
+                authStatusEl.classList.remove('bg-gray-800');
+                authStatusEl.classList.add('bg-red-600');
             }
         }
 
-        // 5. FIRESTORE SUBMISSION FUNCTION (Exposed globally)
-        window.submitPreOrder = async function() {
-            if (!userId) {
-                console.error("Authentication not complete. Cannot submit.");
-                statusMessageEl.textContent = "Please wait for connection...";
+        // ----------------------------------------------------------------------
+        // 4. UI RENDERING FUNCTIONS
+        // ----------------------------------------------------------------------
+
+        function renderReceipt() {
+            let itemsHtml = order.items.map(item => `
+                <div class="flex justify-between text-sm text-gray-600">
+                    <span>${item.name} (${item.quantity})</span>
+                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+            `).join('');
+
+            let detailsHtml = order.customerDetails.name ? `
+                <div class="mt-4 pt-4 border-t border-gray-200 space-y-1">
+                    <p class="text-sm font-medium">Contact:</p>
+                    <p class="text-xs text-gray-600">Name: ${order.customerDetails.name}</p>
+                    <p class="text-xs text-gray-600">Email: ${order.customerDetails.email}</p>
+                </div>
+            ` : '';
+
+            receiptArea.innerHTML = `
+                <h2 class="text-xl font-bold mb-4 border-b pb-2 text-gray-800">Order Summary</h2>
+                <div class="space-y-2">
+                    <div class="flex justify-between font-semibold text-gray-700">
+                        <span>Mode:</span>
+                        <span class="text-primary">${order.mode || 'N/A'}</span>
+                    </div>
+                    <div class="flex justify-between font-semibold text-gray-700">
+                        <span>Preset:</span>
+                        <span>${order.preset || 'N/A'}</span>
+                    </div>
+                    <div class="h-px bg-gray-200 my-4"></div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Items:</h3>
+                    ${itemsHtml || '<p class="text-sm text-gray-500 italic">No items added yet.</p>'}
+                </div>
+                
+                ${detailsHtml}
+
+                <div class="mt-6 pt-4 border-t-2 border-primary">
+                    <div class="flex justify-between text-lg font-bold text-gray-900">
+                        <span>TOTAL ESTIMATE:</span>
+                        <span>$${order.total.toFixed(2)}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.renderModeSelection = function() {
+            currentView = 'order_builder';
+            contentArea.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Step 1: Choose Order Type</h2>
+                <div class="space-y-4">
+                    <button onclick="selectMode('2D')" class="w-full text-left p-5 bg-blue-50 hover:bg-blue-100 rounded-xl shadow-md transition duration-200 border border-blue-200">
+                        <h3 class="text-lg font-semibold text-blue-800">2D Pre-set Design</h3>
+                        <p class="text-sm text-gray-600">Select from our pre-designed 2D models (e.g., logos, isometric scenes).</p>
+                    </button>
+                    <button onclick="selectMode('3D')" class="w-full text-left p-5 bg-purple-50 hover:bg-purple-100 rounded-xl shadow-md transition duration-200 border border-purple-200">
+                        <h3 class="text-lg font-semibold text-purple-800">3D Pre-set Model</h3>
+                        <p class="text-sm text-gray-600">Choose a template for 3D printing or rendering (e.g., character model, product render).</p>
+                    </button>
+                    <button onclick="selectMode('Custom')" class="w-full text-left p-5 bg-green-50 hover:bg-green-100 rounded-xl shadow-md transition duration-200 border border-green-200">
+                        <h3 class="text-lg font-semibold text-green-800">Custom Project</h3>
+                        <p class="text-sm text-gray-600">Start from scratch with unique requirements and dimensions.</p>
+                    </button>
+                </div>
+            `;
+            order = { mode: null, preset: null, items: [], total: 0, customerDetails: {} }; // Reset order
+            renderReceipt();
+        }
+
+        window.renderPresetSelection = function() {
+            let presets = [];
+            if (order.mode === '2D') {
+                presets = [
+                    { name: 'Isometric Scene', price: 150, desc: 'Detailed 2D isometric room or landscape.' },
+                    { name: 'Vector Logo', price: 50, desc: 'High-resolution logo design in vector format.' }
+                ];
+            } else if (order.mode === '3D') {
+                presets = [
+                    { name: 'Low-Poly Character', price: 250, desc: 'A basic rigged 3D character model.' },
+                    { name: 'Product Visualization', price: 350, desc: 'High-quality render of a consumer product.' }
+                ];
+            } else if (order.mode === 'Custom') {
+                renderDetailsForm(); // Skip preset step for custom
                 return;
             }
 
-            const name = nameEl.value.trim();
-            const email = emailEl.value.trim();
-            const item = itemEl.value;
-            const quantity = parseInt(quantityEl.value, 10);
+            const presetsHtml = presets.map(p => `
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div>
+                        <h3 class="font-semibold text-gray-800">${p.name} ($${p.price})</h3>
+                        <p class="text-xs text-gray-500">${p.desc}</p>
+                    </div>
+                    <button onclick="selectPreset('${p.name}', ${p.price})" class="bg-primary text-white text-sm px-3 py-1 rounded-lg hover:bg-primary-dark transition duration-150">
+                        Select
+                    </button>
+                </div>
+            `).join('');
+
+            contentArea.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Step 2: Select a ${order.mode} Preset</h2>
+                <div class="space-y-4">
+                    ${presetsHtml}
+                </div>
+                <button onclick="renderModeSelection()" class="mt-6 text-sm text-gray-500 hover:text-gray-700 transition duration-150">
+                    ← Back to Order Type
+                </button>
+            `;
+            renderReceipt();
+        }
+
+        window.renderDetailsForm = function() {
+            contentArea.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Step 3: Submit Details</h2>
+                <div class="space-y-4">
+                    <p class="text-sm text-gray-600 mb-4">Final step! Enter your contact information to submit the order request.</p>
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                        <input type="text" id="name" placeholder="Name" class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required value="${order.customerDetails.name || ''}">
+                    </div>
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="email" placeholder="Email" class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required value="${order.customerDetails.email || ''}">
+                    </div>
+                    <div id="submission-status" class="text-center h-6 text-sm font-medium"></div>
+
+                    <button onclick="submitOrderRequest()" id="submit-btn" class="w-full py-3 px-4 bg-secondary text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 transition duration-300 disabled:opacity-50">
+                        Submit Order Request
+                    </button>
+                </div>
+                <button onclick="${order.mode === 'Custom' ? 'renderModeSelection()' : 'renderPresetSelection()'}" class="mt-6 text-sm text-gray-500 hover:text-gray-700 transition duration-150">
+                    ← Back
+                </button>
+            `;
+            renderReceipt();
+        }
+
+        // Dashboard Rendering Functions
+        window.renderDashboardAccess = function() {
+            currentView = 'dashboard_access';
+            contentArea.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Manager Dashboard Access</h2>
+                <div class="w-full max-w-sm mx-auto p-8 bg-gray-50 rounded-xl shadow-inner space-y-4">
+                    <p class="text-sm text-gray-600 text-center">Enter the manager key to view real-time orders.</p>
+                    <input type="password" id="manager-pin-input" placeholder="Manager Key (PIN)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-secondary focus:border-secondary transition duration-150 shadow-sm">
+                    <button onclick="attemptDashboardAccess()" class="w-full py-2 bg-secondary text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150">
+                        Access Dashboard
+                    </button>
+                </div>
+                <p id="dashboard-error" class="text-center mt-4 text-red-500 text-sm"></p>
+            `;
+            receiptArea.innerHTML = `<p class="text-center text-gray-500">Access required to view order data.</p>`;
+        }
+        
+        window.renderOrderDashboard = function(orders) {
+            currentView = 'dashboard';
             
-            // Basic Form Validation
-            if (!name || !email || quantity < 1 || isNaN(quantity)) {
-                statusMessageEl.textContent = "Please fill in all fields correctly.";
-                statusMessageEl.classList.add('text-red-500');
+            if (!userId) {
+                contentArea.innerHTML = `<p class="text-center text-xl text-red-500 mt-20">Database is not connected. Cannot load real-time order data.</p>`;
                 return;
             }
 
-            submitButtonEl.disabled = true;
-            submitButtonEl.textContent = "Processing Order...";
-            statusMessageEl.textContent = "";
-            statusMessageEl.classList.remove('text-red-500', 'text-primary-dark');
+            const ordersHtml = orders.length === 0 
+                ? `<p class="text-center text-gray-500 py-10">No orders submitted yet.</p>`
+                : `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item/Mode</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${orders.map(order => `
+                        <tr>
+                            <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500">${order.id.substring(0, 6)}...</td>
+                            <td class="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${order.customerName}</td>
+                            <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${order.itemName || order.mode}</td>
+                            <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">$${order.total.toFixed(2)}</td>
+                            <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(order.timestamp).toLocaleTimeString()}</td>
+                            <td class="px-3 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button onclick="deleteOrder('${order.id}')" class="text-red-600 hover:text-red-900 transition duration-150">Delete</button>
+                            </td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            contentArea.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Real-Time Order Dashboard</h2>
+                <div class="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                    ${ordersHtml}
+                </div>
+            `;
+            receiptArea.innerHTML = `<p class="text-center text-gray-500">Order data successfully loaded.</p>`;
+        }
+
+        // ----------------------------------------------------------------------
+        // 5. APPLICATION LOGIC
+        // ----------------------------------------------------------------------
+
+        window.selectMode = function(mode) {
+            order.mode = mode;
+            order.items = [{ name: `${mode} Base Fee`, price: 100, quantity: 1 }];
+            calculateTotal();
+
+            if (mode === 'Custom') {
+                 renderDetailsForm();
+            } else {
+                 renderPresetSelection();
+            }
+        }
+
+        window.selectPreset = function(presetName, price) {
+            order.preset = presetName;
+            
+            // Remove previous items and add new preset item
+            order.items = [];
+            order.items.push({ name: presetName, price: price, quantity: 1 });
+            order.items.push({ name: 'Design Consultation', price: 50, quantity: 1 });
+            
+            calculateTotal();
+            renderDetailsForm();
+        }
+
+        function calculateTotal() {
+            order.total = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            renderReceipt();
+        }
+
+        window.submitOrderRequest = async function() {
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const submissionStatusEl = document.getElementById('submission-status');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (!name || !email) {
+                submissionStatusEl.textContent = "Name and Email are required.";
+                submissionStatusEl.classList.add('text-red-500');
+                return;
+            }
+
+            order.customerDetails = { name, email };
+            
+            if (!userId) {
+                submissionStatusEl.textContent = "Authentication required. Please wait for connection...";
+                submissionStatusEl.classList.add('text-red-500');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Submitting...";
+            submissionStatusEl.textContent = "";
 
             try {
-                // Path: /artifacts/{appId}/users/{userId}/preorders
-                // NOTE: Orders are saved under the user's private path for this application.
-                const ordersCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/preorders`);
+                // Path: /artifacts/{appId}/users/{userId}/orders (Private to this user session)
+                const ordersCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/orders`);
 
                 await addDoc(ordersCollectionRef, {
-                    customerName: name,
-                    customerEmail: email,
-                    itemName: item,
-                    quantity: quantity,
-                    customerUserId: userId, // Incorporating the unique ID as requested
-                    status: 'PENDING',
+                    ...order,
+                    customerUserId: userId,
                     timestamp: serverTimestamp(),
+                    isCustom: order.mode === 'Custom',
+                    status: 'PENDING',
                 });
-                
-                // Success feedback
-                statusMessageEl.textContent = "Pre-Order submitted successfully! We'll contact you soon.";
-                statusMessageEl.classList.remove('text-red-500');
-                statusMessageEl.classList.add('text-primary-dark');
 
-                // Clear form
-                nameEl.value = '';
-                emailEl.value = '';
-                quantityEl.value = '1';
+                submissionStatusEl.textContent = "Order Submitted Successfully!";
+                submissionStatusEl.classList.remove('text-red-500');
+                submissionStatusEl.classList.add('text-primary');
 
-                console.log(`Order saved for user ${userId} in collection: ${ordersCollectionRef.path}`);
+                // Clear the local order state after submission
+                order = { mode: null, preset: null, items: [], total: 0, customerDetails: {} };
+                setTimeout(renderModeSelection, 2000); // Back to start
 
             } catch (error) {
-                console.error("Error submitting pre-order:", error);
-                // Display error to the user
-                statusMessageEl.textContent = `Order Failed: ${error.code || 'Unknown Error'}. Check Firestore rules.`;
-                statusMessageEl.classList.add('text-red-500');
+                console.error("Error submitting order:", error);
+                submissionStatusEl.textContent = `Submission Failed: ${error.code || 'Unknown'}.`;
+                submissionStatusEl.classList.add('text-red-500');
             } finally {
-                submitButtonEl.textContent = "Submit Pre-Order";
-                submitButtonEl.disabled = false;
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Submit Order Request";
             }
-        };
+        }
+
+        // ----------------------------------------------------------------------
+        // 6. DASHBOARD LOGIC
+        // ----------------------------------------------------------------------
+        window.attemptDashboardAccess = function() {
+            const pinInput = document.getElementById('manager-pin-input').value;
+            const errorEl = document.getElementById('dashboard-error');
+
+            if (pinInput === MANAGER_PIN) {
+                errorEl.textContent = '';
+                setupRealtimeDashboard();
+            } else {
+                errorEl.textContent = 'Invalid Manager Key.';
+            }
+        }
+
+        function setupRealtimeDashboard() {
+            if (!userId || !db) {
+                renderOrderDashboard([]); // Show initial screen with error
+                return;
+            }
+
+            // Path: /artifacts/{appId}/users/{userId}/orders (Only accessible by the current user)
+            const ordersCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/orders`);
+            
+            // Set up a real-time listener
+            onSnapshot(ordersCollectionRef, (snapshot) => {
+                const fetchedOrders = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    // Ensure total is a number for display
+                    data.total = parseFloat(data.total || 0); 
+                    data.timestamp = data.timestamp ? data.timestamp.toDate().getTime() : Date.now();
+                    fetchedOrders.push({ id: doc.id, ...data });
+                });
+
+                // Sort by timestamp (newest first)
+                fetchedOrders.sort((a, b) => b.timestamp - a.timestamp); 
+
+                renderOrderDashboard(fetchedOrders);
+            }, (error) => {
+                console.error("Error listening to orders:", error);
+                contentArea.innerHTML = `<p class="text-center text-xl text-red-500 mt-20">Error loading orders: Check console for details. (Likely Firestore rules issue)</p>`;
+            });
+        }
+
+        window.deleteOrder = async function(orderId) {
+            if (!confirm(`Are you sure you want to delete order ${orderId}?`)) return;
+
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/orders`, orderId);
+                await deleteDoc(docRef);
+                console.log(`Order ${orderId} deleted successfully.`);
+            } catch (error) {
+                console.error("Error deleting order:", error);
+                alert(`Failed to delete order: ${error.code}`);
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // 7. INITIAL STARTUP
+        // ----------------------------------------------------------------------
+        window.onload = function() {
+            // Wait for everything to load, then render the initial builder and receipt
+            renderModeSelection(); 
+            renderReceipt();
+        }
 
     </script>
 </body>
