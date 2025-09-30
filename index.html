@@ -106,40 +106,49 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, setLogLevel, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- FIREBASE AND APP CONFIGURATION (FIXED) ---
+        // --- FIREBASE AND APP CONFIGURATION (MAX DEFENSE AGAINST MOCK KEY) ---
         let db = null;
         let auth = null;
-        let userId = 'anon-user'; // Default placeholder
-        let dbStatus = 'connecting'; // 'connecting', 'ready', 'config_missing', 'auth_failed'
+        let userId = 'anon-user'; 
+        let dbStatus = 'connecting'; 
         
         // Global variables provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        // Use environment config. We rely on the environment to provide this correctly.
         let firebaseConfig = null;
         
-        // --- CRITICAL DEBUGGING LOGGING ---
-        console.log('--- DEBUG: Environment Variables Check ---');
-        console.log('__app_id:', appId);
-        console.log('__initial_auth_token:', authToken ? 'DEFINED (Token present)' : 'NOT DEFINED (Anonymous Sign-in expected)');
-        
+        // --- CRITICAL CONFIGURATION PARSING BLOCK ---
+        // This block MUST succeed and provide a valid config, or the app will not initialize Firebase.
         try {
-            // FIX: Always attempt to parse the environment variable if it exists.
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 firebaseConfig = JSON.parse(__firebase_config);
+                
+                // CRITICAL CHECK: Ensure the key is not null or the forbidden mock key.
+                if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes('mockKey') || firebaseConfig.apiKey.length < 10) {
+                    throw new Error("Parsed Firebase config is missing a valid API key (detected mock/invalid key).");
+                }
+                
                 console.log("SUCCESS: Using provided Firebase configuration.");
+                console.log("CONFIRMATION: API Key is present and appears valid (starts with: " + firebaseConfig.apiKey.substring(0, 10) + '...)');
+                
             } else {
-                console.error("CRITICAL ERROR: __firebase_config is missing or empty. Database connection will be blocked.");
+                throw new Error("Environment variable __firebase_config is missing or empty.");
             }
         } catch (e) {
-            console.error("CRITICAL ERROR: Failed to parse __firebase_config string as JSON. Authentication will fail.", e);
+            console.error("CRITICAL FIREBASE CONFIGURATION ERROR: Database initialization failed.", e);
+            dbStatus = 'config_missing';
+            
+            // Set the footer status immediately if parsing failed
+            window.onload = function() {
+                // Ensure auth status is updated even if initializeFirebase is skipped
+                window.app.setAuthStatus('config_missing');
+                window.app.renderModeSelection(); 
+            }
         }
-
-        // --- DEBUG: Actual Firebase Config USED FOR INIT ---
-        console.log('--- DEBUG: Actual Firebase Config USED FOR INIT ---', firebaseConfig);
-        console.log('--------------------------------------------------');
         
+        // --- END CRITICAL CONFIGURATION PARSING BLOCK ---
+
         // Lookup elements that are guaranteed to exist when the script loads since it is at the end of <body>
         const authInfoEl = document.getElementById('auth-info');
         const APP_CONTAINER = document.getElementById('content-area');
@@ -164,7 +173,7 @@
                     }
                     break;
                 case 'config_missing':
-                    authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. **Firebase Config is missing**. Submissions disabled. Please ensure the configuration is provided.</p>`;
+                    authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. **Firebase Config is missing or invalid**. Submissions disabled.</p>`;
                     break;
                 case 'auth_failed':
                     authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Sign-in failed. Submissions disabled. Details: ${message}</p>`;
@@ -182,10 +191,9 @@
 
 
         function initializeFirebase() {
-            // FIX: Check if we successfully parsed the environment config.
-            if (!firebaseConfig) {
-                setAuthStatus('config_missing');
-                console.error("Firebase initialization aborted: firebaseConfig is null or missing.");
+            // Check if configuration parsing failed above. If so, skip initialization.
+            if (dbStatus === 'config_missing' || !firebaseConfig) {
+                console.warn("Firebase initialization skipped due to missing or invalid configuration.");
                 return;
             }
 
@@ -202,23 +210,23 @@
                         userId = user.uid;
                         setAuthStatus('ready'); // DB is ready once user is signed in
                     } else {
-                        // User signed out or failed to sign in
+                        // This handles sign-out or failures from the sign-in attempts below.
                         setAuthStatus('auth_failed', 'User not authenticated.');
                     }
                 });
                 
-                // 2. Attempt immediate sign-in
+                // 2. Attempt sign-in using the provided token, or anonymously.
                 if (authToken) {
                     signInWithCustomToken(auth, authToken).catch(e => {
-                         // This is where the old error happened if authToken was null and it fell back to mock config
-                         console.error("Firebase: Custom token sign-in failed, trying anonymous:", e);
-                         signInAnonymously(auth); // Fallback to anonymous
+                         console.error("Firebase: Custom token sign-in failed. Falling back to anonymous. Error:", e);
+                         // If custom token fails, try the standard anonymous sign-in
+                         signInAnonymously(auth); 
                     });
                 } else {
+                    // Fallback to anonymous sign-in if no custom token is available
                     signInAnonymously(auth).catch(e => {
-                        // Catch the anonymous sign-in failure (e.g., if API key is invalid or project ID is wrong)
-                        console.error("Firebase: Anonymous sign-in failed.", e);
-                        setAuthStatus('auth_failed', `Sign-in failed: ${e.message}`);
+                        console.error("Firebase: Anonymous sign-in failed. Error:", e);
+                        setAuthStatus('auth_failed', `Anonymous Sign-in Failed: ${e.message}`);
                     });
                 }
 
@@ -228,7 +236,7 @@
             }
         }
         
-        // --- APPLICATION CONSTANTS (Rest of the code remains the same) ---
+        // --- APPLICATION CONSTANTS (Same as before) ---
         const BASE_PRICES = {
             '2D': 500.00,  // PHP
             '3D': 1500.00  // PHP
@@ -694,7 +702,7 @@
             calculateOrder();
             
             APP_CONTAINER.innerHTML = `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="grid grid-cols-1 lg:col-cols-3 gap-6">
                     <div class="lg:col-span-2">
                         <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 2: Choose Your Add-ons</h3>
                         <p class="text-gray-600 mb-6">Enhance your BuoBuo Ka with optional add-ons like delivery, display boxes, or lights.</p>
@@ -1070,7 +1078,6 @@
 
         function submitOrder() {
             if (dbStatus !== 'ready' || !db) {
-                // If the app is using the mock config and authentication fails (which it should), this path is hit.
                 return showMessage('Database Offline', 'Cannot submit order. The database connection failed to fully authenticate. Please check the status message at the bottom of the page.', 'continue');
             }
             
@@ -1129,6 +1136,7 @@
 
         // 2. Start the application ONLY when the entire DOM is loaded.
         window.onload = function() {
+            // NOTE: If the config parsing failed above, this call will safely return early.
             initializeFirebase(); 
             renderModeSelection(); 
         }
