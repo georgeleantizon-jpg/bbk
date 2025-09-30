@@ -126,26 +126,43 @@
         // Global variables provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : 'UNDEFINED';
         
         // Use environment config if available and non-empty, otherwise use mock config.
         let firebaseConfig;
+        
+        // --- CRITICAL DEBUGGING LOGGING ---
+        console.log('--- DEBUG: Environment Variables Check ---');
+        console.log('__app_id:', appId);
+        console.log('__initial_auth_token:', authToken ? 'DEFINED (Token present)' : 'NOT DEFINED (Anonymous Sign-in expected)');
+        // Log the first 100 characters of the config string to check for content/truncation
+        console.log('__firebase_config (STRING VALUE - first 100 chars):', configString.substring(0, 100) + (configString.length > 100 ? '...' : ''));
+        console.log('------------------------------------------');
+
         try {
-            const envConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-            if (envConfig && Object.keys(envConfig).length > 0 && envConfig.projectId) {
-                firebaseConfig = envConfig;
+            if (configString !== 'UNDEFINED' && configString.length > 5) {
+                const envConfig = JSON.parse(configString);
+                // Check if the parsed config is valid and not just an empty object or the mock key itself
+                if (envConfig && Object.keys(envConfig).length > 0 && envConfig.projectId) {
+                    firebaseConfig = envConfig;
+                    console.log("SUCCESS: Using provided Firebase configuration. (Check apiKey in next log)");
+                } else {
+                    firebaseConfig = MOCK_FIREBASE_CONFIG;
+                    console.warn("WARNING: Provided config was found but appears invalid/incomplete, falling back to mock config.");
+                }
             } else {
                 firebaseConfig = MOCK_FIREBASE_CONFIG;
-                console.warn("Using mock Firebase configuration.");
+                console.warn("WARNING: __firebase_config is UNDEFINED or empty, falling back to mock config.");
             }
         } catch (e) {
-            console.error("Failed to parse __firebase_config, falling back to mock:", e);
+            console.error("CRITICAL ERROR: Failed to parse __firebase_config string as JSON. Falling back to mock config:", e);
             firebaseConfig = MOCK_FIREBASE_CONFIG;
         }
 
-        // --- DEBUG LINE INSERTED HERE ---
+        // --- DEBUG: Actual Firebase Config USED FOR INIT ---
         // This will print the actual config object the app is using to try and initialize Firebase.
-        console.log('--- DEBUG: Actual Firebase Config Loaded ---', firebaseConfig);
-        // --------------------------------
+        console.log('--- DEBUG: Actual Firebase Config USED FOR INIT ---', firebaseConfig);
+        console.log('--------------------------------------------------');
         
         // Lookup elements that are guaranteed to exist when the script loads since it is at the end of <body>
         const authInfoEl = document.getElementById('auth-info');
@@ -226,7 +243,7 @@
             }
         }
         
-        // --- APPLICATION CONSTANTS ---
+        // --- APPLICATION CONSTANTS (Rest of the code remains the same) ---
         const BASE_PRICES = {
             '2D': 500.00,  // PHP
             '3D': 1500.00  // PHP
