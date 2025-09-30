@@ -81,7 +81,7 @@
             <!-- Content will be injected here by JavaScript -->
         </div>
         
-        <p id="auth-info" class="text-xs text-center text-gray-400 mt-8">Authentication Status...</p>
+        <p id="auth-info" class="text-xs text-center text-gray-400 mt-8">Authentication Status: Connecting to database...</p>
 
         <!-- Submission Status/Modal -->
         <div id="message-box" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
@@ -105,7 +105,7 @@
         let db = null;
         let auth = null;
         let userId = 'anon-user'; // Default placeholder
-        let isDbReady = false; // Flag to check if DB is initialized
+        let isDbReady = false; // Flag to check if DB is initialized and auth is complete
 
         // Global variables provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
@@ -118,32 +118,37 @@
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                setLogLevel('debug');
-                isDbReady = true;
+                setLogLevel('debug'); // Enable detailed logging
 
-                // Sign in the user
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                onAuthStateChanged(auth, (user) => {
+                // 1. Initial Authentication Check and Setup
+                onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
-                        authInfoEl.innerHTML = `<p class="text-green-600">✅ Authenticated. User ID: <strong>${userId}</strong></p>`;
+                        isDbReady = true; // DB is ready once user is signed in
+                        authInfoEl.innerHTML = `<p class="text-green-600">✅ Database Connected. User ID: <strong>${userId}</strong></p>`;
+                        
+                        // If the user happens to be viewing the dashboard when auth completes, render it.
+                        if (currentStep === 'dashboard') {
+                            listenForOrders();
+                        }
                     } else {
-                        userId = crypto.randomUUID(); // Fallback for unauthenticated
-                        authInfoEl.innerHTML = `<p class="text-yellow-600">⚠️ Anonymous sign-in. Generated ID: <strong>${userId}</strong></p>`;
+                        // Attempt initial sign-in if not already authenticated
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                        
+                        // If sign-in was successful, the onAuthStateChanged will be triggered again with the user object.
                     }
                 });
+
 
             } catch (e) {
                 isDbReady = false;
                 console.error("Firebase initialization failed:", e);
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ Database Offline: Firebase failed to initialize.</p>`;
-                // Only show a non-critical message box if the failure is total.
-                showMessage('Database Offline', 'Cannot submit orders. Please check your connection or contact support.', 'continue');
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Submissions disabled. Check console for details.</p>`;
+                // Do NOT show a modal here, just update the status message
             }
         }
         
@@ -238,6 +243,7 @@
 
             let discount = 0;
             if (productCount >= 3) {
+                // Apply 10% discount on the highest priced single item
                 discount = highestProductPrice * 0.10;
             }
 
@@ -563,6 +569,11 @@
         function renderConfirmation() {
             calculateOrder();
             const productCount = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
+
+            // Determine if the submit button should be disabled
+            const submitDisabled = !isDbReady;
+            const submitText = isDbReady ? 'Submit Pre-Order and Lock In Price!' : 'Database Offline: Cannot Submit Order';
+
             APP_CONTAINER.innerHTML = `
                 <h3 class="text-2xl font-semibold text-center mb-8 text-gray-800">Step 4: Confirm Your BuoBuo Ka Pre-Order</h3>
                 <div class="max-w-3xl mx-auto">
@@ -609,8 +620,8 @@
                         </div>
                     </div>
 
-                    <button onclick="window.app.submitOrder()" class="btn-primary px-6 py-4 rounded-lg font-bold w-full text-xl shadow-lg hover:shadow-xl">
-                        Submit Pre-Order and Lock In Price!
+                    <button onclick="window.app.submitOrder()" class="btn-primary px-6 py-4 rounded-lg font-bold w-full text-xl shadow-lg hover:shadow-xl disabled:opacity-50" ${submitDisabled ? 'disabled' : ''}>
+                        ${submitText}
                     </button>
                     <button onclick="window.app.goBack()" class="mt-4 text-gray-500 hover:text-gray-800 transition-colors block text-center mx-auto">← Back to Edit Details</button>
                 </div>
@@ -634,20 +645,36 @@
             if (isDbReady) {
                 listenForOrders();
             } else {
-                 document.getElementById('loading-indicator').textContent = 'Cannot connect to database to load orders.';
+                document.getElementById('loading-indicator').textContent = 'Waiting for database connection to be established...';
+                // If not ready, the onAuthStateChanged listener will call listenForOrders() when it is ready.
             }
         }
         
+        let unsubscribeOrders = null; // Holds the real-time listener function
+        
         function listenForOrders() {
+            if (unsubscribeOrders) {
+                unsubscribeOrders(); // Clean up previous listener if it exists
+            }
+            
+            if (!isDbReady || !db) {
+                console.warn("Attempted to listen for orders but DB is not ready.");
+                document.getElementById('loading-indicator').textContent = 'Database is not yet connected.';
+                return;
+            }
+            
             const collectionPath = `artifacts/${appId}/public/data/orders`;
             const q = query(collection(db, collectionPath));
             
             // Set up real-time listener
-            onSnapshot(q, (snapshot) => {
+            unsubscribeOrders = onSnapshot(q, (snapshot) => {
                 const orders = [];
                 snapshot.forEach((doc) => {
                     orders.push({ id: doc.id, ...doc.data() });
                 });
+                // Sort by timestamp descending (newest first)
+                orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
                 displayOrders(orders);
             }, (error) => {
                  console.error("Error fetching real-time orders:", error);
@@ -665,7 +692,7 @@
             
             const tableHtml = `
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="dashboard-table-header">
+                    <thead class="dashboard-table-header sticky top-0">
                         <tr>
                             <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tl-lg">ID / Name</th>
                             <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Items</th>
@@ -677,19 +704,23 @@
                     <tbody class="bg-white divide-y divide-gray-200">
                         ${orders.map(order => `
                             <tr class="dashboard-table-row">
-                                <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                                <td class="px-3 py-4 text-sm text-gray-900 font-semibold">
                                     ${order.name}<br><span class="text-xs text-gray-500">${order.id.substring(0, 8)}...</span>
                                 </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-700">
-                                    ${order.items.map(item => `${item.quantity}x ${item.dimension} ${item.type}`).join(', ')}
+                                <td class="px-3 py-4 text-xs text-gray-700">
+                                    <ul class="list-disc list-inside space-y-0.5">
+                                        ${order.items.map(item => `
+                                            <li>${item.quantity}x ${item.dimension} ${item.type} (${item.name.split('(')[0].trim()})</li>
+                                        `).join('')}
+                                    </ul>
                                 </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-700">
+                                <td class="px-3 py-4 text-xs text-gray-700">
                                     ${Object.keys(order.addOns).length > 0 ? Object.keys(order.addOns).map(id => ADD_ONS.find(a => a.id === id)?.name).join(', ') : 'None'}
                                 </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-sm font-bold text-right text-blue-600">
+                                <td class="px-3 py-4 text-sm font-bold text-right text-blue-600">
                                     ${formatCurrency(order.calculations.finalTotal)}
                                 </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500">
+                                <td class="px-3 py-4 text-xs text-gray-500">
                                     ${formatDate(order.timestamp)}
                                 </td>
                             </tr>
@@ -853,12 +884,15 @@
             
             // Re-render to clear selection controls/reset state
             if (type === 'preset') {
-                renderPresetSelection(newItem.dimension);
+                // Ensure correct mode is re-rendered
+                const dimension = newItem.dimension;
+                document.getElementById('selected-design-id').value = ''; // clear selection
+                renderPresetSelection(dimension);
             } else {
                 renderCustomization();
             }
             
-            showMessage('Item Added!', `${quantity}x ${newItem.name} added to your order.`, 'continue');
+            showMessage('Item Added!', `${quantity}x ${newItem.name.split('(')[0].trim()} added to your order.`, 'continue');
         }
         
         async function submitOrder() {
@@ -909,6 +943,8 @@
                  document.getElementById('message-button').onclick = hideMessage;
             } else if (buttonText === 'refresh') {
                  document.getElementById('message-button').onclick = () => window.location.reload();
+            } else if (buttonText === 'Start New Order') {
+                // Handled in submitOrder function
             }
         }
 
@@ -927,6 +963,13 @@
                      return;
                 }
             }
+
+            // Clean up dashboard listener if leaving dashboard
+            if (currentStep === 'dashboard' && unsubscribeOrders) {
+                unsubscribeOrders();
+                unsubscribeOrders = null;
+            }
+
 
             switch (step) {
                 case 'mode_selection':
@@ -982,7 +1025,7 @@
 
         // 2. Define the main startup function
         function startApp() {
-            // Start Firebase initialization in the background
+            // Start Firebase initialization and auth setup
             initializeFirebase(); 
             // Immediately render the first step (Order Builder)
             renderModeSelection();
