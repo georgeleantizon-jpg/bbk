@@ -115,47 +115,22 @@
         // Global variables provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const authInfoEl = document.getElementById('auth-info');
         
         // MANAGER GATE KEY: Use a simple PIN to restrict dashboard viewing
         const MANAGER_KEY = "1234"; 
 
-        /**
-         * Attempts to sign the user in using exponential backoff.
-         */
-        async function attemptSignIn(retries = 5, delay = 1000) {
-            if (retries === 0) {
-                const errorMsg = 'Max retries reached. Database access failed.';
-                console.error('Firebase:', errorMsg);
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. ${errorMsg} Submissions disabled.</p>`;
-                isDbReady = false;
-                return;
-            }
-
-            try {
-                // Determine if we have a custom token (preferred) or should use anonymous sign-in
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                // If sign-in succeeds, the onAuthStateChanged listener will handle final setup.
-                console.log("Firebase: Sign-in attempt succeeded.");
-            } catch (e) {
-                const nextDelay = delay * 2;
-                console.warn(`Firebase: Sign-in failed (Retries left: ${retries - 1}). Retrying in ${delay / 1000}s.`, e);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                await attemptSignIn(retries - 1, nextDelay); // Recursive call with increased delay
-            }
-        }
-
 
         function initializeFirebase() {
             // Check if essential config is available
-            if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
-                console.error("Firebase: Configuration is missing or empty.");
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. Firebase Config is missing. Contact support.</p>`;
-                return;
+            const configIsMissing = !firebaseConfig || Object.keys(firebaseConfig).length === 0;
+
+            if (configIsMissing) {
+                console.error("Firebase: Configuration is missing or empty. Cannot initialize.");
+                isDbReady = false;
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline (Missing Config)**. Submissions disabled. Please ensure environment variables are loaded.</p>`;
+                return; // STOP initialization
             }
 
             try {
@@ -164,7 +139,7 @@
                 auth = getAuth(app);
                 setLogLevel('debug'); // Enable detailed logging
 
-                // 1. Set up Auth State Listener (This runs when sign-in succeeds or changes)
+                // 1. Set up Auth State Listener
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
@@ -176,14 +151,21 @@
                             listenForOrders();
                         }
                     } else {
-                        // User signed out or failed to sign in after retries
+                        // User signed out or failed to sign in
                         isDbReady = false;
-                        authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Submissions disabled. Please refresh and try again.</p>`;
+                        authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Sign-in failed. Submissions disabled.</p>`;
                     }
                 });
                 
-                // 2. Start the immediate sign-in attempt with retries
-                attemptSignIn(); 
+                // 2. Attempt immediate sign-in
+                if (authToken) {
+                    signInWithCustomToken(auth, authToken).catch(e => {
+                         console.error("Firebase: Custom token sign-in failed, trying anonymous:", e);
+                         signInAnonymously(auth); // Fallback to anonymous
+                    });
+                } else {
+                    signInAnonymously(auth);
+                }
 
             } catch (e) {
                 isDbReady = false;
@@ -264,6 +246,7 @@
             }
         }
 
+        // ... (All other utility functions, step rendering functions, and handlers remain the same) ...
 
         // --- CORE FUNCTIONS ---
 
@@ -360,7 +343,7 @@
             `;
             updateNextButtonState();
         }
-
+        
         function removeItem(index) {
             if (currentStep !== 'mode_selection') {
                 return showMessage('Cannot Edit', 'Please return to Step 1: Build Your Order to make changes.', 'continue');
@@ -382,8 +365,6 @@
             }
         }
         
-        // --- STEP RENDERING FUNCTIONS (Omitted for brevity, assumed correct) ---
-
         function updateNavStyles(activeId) {
             document.getElementById('nav-order-builder').classList.remove('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
             document.getElementById('nav-order-builder').classList.add('text-gray-600', 'hover:bg-gray-100');
@@ -711,18 +692,22 @@
 
         function renderOrderDashboardContent() {
             currentStep = 'dashboard';
+            const statusMessage = isDbReady 
+                ? 'Waiting for real-time orders...'
+                : 'Database is currently disconnected. Cannot load real-time order data.';
+
             APP_CONTAINER.innerHTML = `
                 <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Real-Time Order Dashboard (Manager View)</h3>
-                <p class="text-sm text-center text-green-700 mb-4">Orders are saved privately to: <code>artifacts/${appId}/users/${userId}/orders</code></p>
+                <div class="bg-orange-100 p-3 rounded-lg mb-4 text-sm text-orange-800">
+                    <strong>Note:</strong> Orders are saved privately to: <code>artifacts/${appId}/users/${userId}/orders</code>
+                </div>
                 <div id="dashboard-content" class="bg-white rounded-xl shadow-inner p-4 overflow-x-auto min-h-[300px]">
-                    <div class="text-center py-10 text-gray-500" id="loading-indicator">Waiting for database to be established...</div>
+                    <div class="text-center py-10 text-gray-500" id="loading-indicator">${statusMessage}</div>
                 </div>
             `;
             
             if (isDbReady) {
                 listenForOrders();
-            } else {
-                document.getElementById('loading-indicator').textContent = 'Database is not connected. Please ensure the connection status at the bottom is green before proceeding.';
             }
         }
         
@@ -754,7 +739,7 @@
                 displayOrders(orders);
             }, (error) => {
                  console.error("Error fetching real-time orders:", error);
-                 document.getElementById('loading-indicator').textContent = `Error loading orders: ${error.message}`;
+                 document.getElementById('dashboard-content').innerHTML = `<div class="text-center py-10 text-red-500">Error loading orders: ${error.message}. Check Firebase rules.</div>`;
             });
         }
         
@@ -808,7 +793,7 @@
         }
 
         // --- HANDLER FUNCTIONS (Omitted for brevity, assumed correct) ---
-        
+
         function updateNextButtonState() {
              const nextButton = document.getElementById('next-to-addons');
              if (nextButton) {
@@ -973,7 +958,7 @@
         
         async function submitOrder() {
             if (!isDbReady || !db) {
-                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established. Check the connection status at the bottom of the page.', 'continue');
+                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established.', 'continue');
             }
             
             try {
@@ -1005,8 +990,6 @@
                 showMessage('Submission Failed', `There was an error saving your order. Please try again. Error: ${error.message}`, 'continue');
             }
         }
-
-        // --- NAVIGATION AND UI HELPERS (Omitted for brevity, assumed correct) ---
 
         function showMessage(title, text, buttonText) {
             document.getElementById('message-title').textContent = title;
