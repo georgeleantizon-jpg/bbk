@@ -147,6 +147,10 @@
                     authInfoEl.innerHTML = `<p class="text-gray-400">Authentication Status: Connecting to database...</p>`;
                     break;
             }
+            // Re-render confirmation screen if currently on it to update the submit button state
+            if (currentStep === 'confirmation') {
+                renderConfirmation();
+            }
         }
 
 
@@ -393,10 +397,22 @@
             }
         }
         
+        function updateNextButtonState() {
+            const nextButton = document.getElementById('next-to-addons');
+            if (nextButton) {
+                const enable = orderData.items.length > 0;
+                nextButton.disabled = !enable;
+                nextButton.textContent = enable ? 'Proceed to Add-ons →' : 'Add at least one item to proceed';
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // STEP 1: MODE SELECTION & PRESET/CUSTOM RENDERING
+        // ---------------------------------------------------------------------
+
         function renderModeSelection() {
-            // ... (Same as before) ...
             updateNavStyles('nav-order-builder');
-            calculateOrder();
+            calculateOrder(); // Renders the summary container on the right
             APP_CONTAINER.innerHTML = `
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div class="lg:col-span-2">
@@ -418,25 +434,355 @@
                                 <p class="text-sm text-gray-500">Choose 2D/3D</p>
                             </button>
                         </div>
-                        <div id="selection-area">
-                            <p class="text-center text-gray-500 pt-10">Select an option above to begin configuring your item.</p>
+                        <div id="selection-area" class="bg-gray-100 p-6 rounded-xl min-h-[400px]">
+                            <!-- Content injected by selectMode or preset/custom renderers -->
                         </div>
                     </div>
                     <div class="lg:col-span-1">
                         <div id="order-summary-container"></div>
                         <button id="next-to-addons" onclick="window.app.selectStep('addons')" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg disabled:opacity-50" disabled>
-                            Proceed to Add-ons →
+                            Add at least one item to proceed
                         </button>
                     </div>
                 </div>
             `;
             currentStep = 'mode_selection';
-            updateSummaryDisplay();
+            // Re-render summary after innerHTML replacement
+            updateSummaryDisplay(); 
             clearSelectionAreaPrompt(); 
         }
 
-        // ... (renderPresetSelection, renderCustomization, renderAddOnsSelection, renderDetailsForm, renderConfirmation are the same) ...
+        function selectMode(mode, dimension) {
+            orderData.customization = { dimension: dimension, photoFileName: null, price: BASE_PRICES[dimension] || 0 };
+            
+            if (mode === 'preset') {
+                renderPresetSelection(dimension);
+            } else if (mode === 'custom') {
+                renderCustomization();
+            }
+        }
 
+        function renderPresetSelection(dimension) {
+            const selectionArea = document.getElementById('selection-area');
+            const designs = PRESETS[dimension];
+            const price = BASE_PRICES[dimension];
+
+            selectionArea.innerHTML = `
+                <h4 class="text-xl font-bold text-gray-800 mb-4">${dimension} Pre-set Designs (${formatCurrency(price)})</h4>
+                <p class="text-sm text-gray-600 mb-6">Select a pre-designed pattern or image to engrave. Click the "Add to Order" button to finalize the quantity.</p>
+                
+                <div id="design-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    ${designs.map(design => `
+                        <div id="design-${design.id}" onclick="window.app.selectDesign('${design.id}', '${dimension}')" 
+                             class="design-card p-2 rounded-xl bg-white shadow-md cursor-pointer hover:shadow-lg text-center">
+                            <img src="${design.imageUrl}" alt="${design.name}" class="w-full h-auto rounded-md mb-2 object-cover" onerror="this.onerror=null; this.src='https://placehold.co/200x200/5B21B6/FFFFFF?text=${dimension}'">
+                            <p class="text-sm font-semibold">${design.name}</p>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div id="preset-controls" class="mt-8 pt-4 border-t border-gray-300 hidden">
+                    <p class="text-lg font-bold mb-3 text-blue-700">Add Selected Item to Order</p>
+                    <div class="flex items-center space-x-4">
+                        <label for="quantity-preset" class="font-medium">Quantity:</label>
+                        <input type="number" id="quantity-preset" value="1" min="1" oninput="window.app.validateQuantity(this)"
+                               class="w-20 p-2 border border-gray-300 rounded-lg text-center focus:ring-blue-500 focus:border-blue-500">
+                        <button id="add-preset-btn" onclick="window.app.addToOrder('preset')" class="btn-primary px-6 py-2 rounded-lg font-semibold" disabled>
+                            Add to Order
+                        </button>
+                    </div>
+                </div>
+            `;
+            // Re-apply selection if one was previously made for this dimension
+            if (orderData.customization.designId) {
+                selectDesign(orderData.customization.designId, dimension);
+            }
+        }
+
+        function selectDesign(designId, dimension) {
+            orderData.customization.designId = designId;
+            
+            // Highlight the selected card
+            document.querySelectorAll('.design-card').forEach(el => el.classList.remove('selected'));
+            document.getElementById(`design-${designId}`).classList.add('selected');
+            
+            // Show controls and enable button
+            document.getElementById('preset-controls').classList.remove('hidden');
+            document.getElementById('add-preset-btn').disabled = false;
+        }
+
+        function renderCustomization() {
+            const selectionArea = document.getElementById('selection-area');
+            const dimension = orderData.customization.dimension;
+            const price = BASE_PRICES[dimension === '3D' ? '3D' : '2D'];
+
+            selectionArea.innerHTML = `
+                <h4 class="text-xl font-bold text-gray-800 mb-4">Custom Image Upload (${formatCurrency(price)})</h4>
+                <p class="text-sm text-gray-600 mb-6">Upload your own design or photo. We accept high-resolution JPEG or PNG files.</p>
+                
+                <div class="space-y-4">
+                    <label class="block text-sm font-medium text-gray-700">Select Dimension:</label>
+                    <select id="custom-dimension" onchange="window.app.updateCustomization(this.value)" 
+                            class="block w-full md:w-1/2 p-3 border border-gray-300 bg-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                        <option value="2D" ${dimension === '2D' ? 'selected' : ''}>2D Engraving (${formatCurrency(BASE_PRICES['2D'])})</option>
+                        <option value="3D" ${dimension === '3D' ? 'selected' : ''}>3D Engraving (${formatCurrency(BASE_PRICES['3D'])})</option>
+                    </select>
+
+                    <label class="block text-sm font-medium text-gray-700 pt-4">Upload Design (JPEG/PNG only):</label>
+                    <input type="file" id="custom-file-upload" accept=".jpg, .jpeg, .png" onchange="window.app.handleCustomFileUpload(event)"
+                           class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    
+                    <p id="file-status" class="text-sm italic text-gray-500">No file selected.</p>
+                </div>
+
+                <div id="custom-controls" class="mt-8 pt-4 border-t border-gray-300">
+                    <p class="text-lg font-bold mb-3 text-blue-700">Add Custom Item to Order</p>
+                    <div class="flex items-center space-x-4">
+                        <label for="quantity-custom" class="font-medium">Quantity:</label>
+                        <input type="number" id="quantity-custom" value="1" min="1" oninput="window.app.validateQuantity(this)"
+                               class="w-20 p-2 border border-gray-300 rounded-lg text-center focus:ring-blue-500 focus:border-blue-500">
+                        <button id="add-custom-btn" onclick="window.app.addToOrder('custom')" class="btn-primary px-6 py-2 rounded-lg font-semibold" disabled>
+                            Add to Order
+                        </button>
+                    </div>
+                </div>
+            `;
+            // Initialize custom state
+            document.getElementById('custom-dimension').value = dimension;
+            updateCustomization(dimension);
+            // Re-display file status if a file was selected before
+            if (orderData.customization.photoFileName) {
+                document.getElementById('file-status').textContent = `Selected: ${orderData.customization.photoFileName}`;
+                document.getElementById('add-custom-btn').disabled = false;
+            }
+        }
+
+        function updateCustomization(dimension) {
+            const newPrice = BASE_PRICES[dimension];
+            orderData.customization.dimension = dimension;
+            orderData.customization.price = newPrice;
+            
+            // Update the display text of the select element without re-rendering the whole form
+            const selectEl = document.getElementById('custom-dimension');
+            if (selectEl) {
+                selectEl.options[0].textContent = `2D Engraving (${formatCurrency(BASE_PRICES['2D'])})`;
+                selectEl.options[1].textContent = `3D Engraving (${formatCurrency(BASE_PRICES['3D'])})`;
+            }
+            
+            // Re-render to update header price and button state if necessary
+            // Note: Since we are in the custom flow, we don't need a full re-render, just update the price
+            const header = document.getElementById('selection-area').querySelector('h4');
+            if(header) {
+                header.textContent = `Custom Image Upload (${formatCurrency(newPrice)})`;
+            }
+        }
+
+        function handleCustomFileUpload(event) {
+            const file = event.target.files[0];
+            const fileStatusEl = document.getElementById('file-status');
+            const addButton = document.getElementById('add-custom-btn');
+
+            if (file) {
+                if (file.type.startsWith('image/') && (file.type.includes('jpeg') || file.type.includes('png'))) {
+                    orderData.customization.photoFileName = file.name;
+                    fileStatusEl.textContent = `Selected: ${file.name}`;
+                    fileStatusEl.classList.remove('text-red-500');
+                    fileStatusEl.classList.add('text-green-600');
+                    addButton.disabled = false;
+                } else {
+                    orderData.customization.photoFileName = null;
+                    fileStatusEl.textContent = "Error: Please upload a JPEG or PNG image.";
+                    fileStatusEl.classList.remove('text-green-600');
+                    fileStatusEl.classList.add('text-red-500');
+                    addButton.disabled = true;
+                }
+            } else {
+                orderData.customization.photoFileName = null;
+                fileStatusEl.textContent = "No file selected.";
+                fileStatusEl.classList.remove('text-green-600');
+                fileStatusEl.classList.remove('text-red-500');
+                addButton.disabled = true;
+            }
+        }
+        
+        function validateQuantity(input) {
+            if (input.value < 1) {
+                input.value = 1;
+            }
+        }
+        
+        function addToOrder(type) {
+            let item = {};
+            let quantity = 1;
+
+            if (type === 'preset') {
+                const designId = orderData.customization.designId;
+                const dimension = orderData.customization.dimension;
+                const design = PRESETS[dimension].find(d => d.id === designId);
+                quantity = parseInt(document.getElementById('quantity-preset').value) || 1;
+                
+                if (!design) return showMessage('Error', 'Please select a design.', 'continue');
+
+                item = {
+                    name: `${design.name} (Preset)`,
+                    designId: designId,
+                    dimension: dimension,
+                    type: 'Preset',
+                    price: BASE_PRICES[dimension],
+                    quantity: quantity
+                };
+
+            } else if (type === 'custom') {
+                const dimension = orderData.customization.dimension;
+                const photoFileName = orderData.customization.photoFileName;
+                quantity = parseInt(document.getElementById('quantity-custom').value) || 1;
+                
+                if (!photoFileName) return showMessage('Error', 'Please upload a custom design file.', 'continue');
+
+                item = {
+                    name: `Custom Design: ${photoFileName}`,
+                    designId: 'custom',
+                    dimension: dimension,
+                    type: 'Custom',
+                    price: BASE_PRICES[dimension],
+                    quantity: quantity
+                };
+            }
+
+            orderData.items.push(item);
+            calculateOrder();
+            // Reset state and return to main selection view
+            selectMode('preset', '3D'); 
+            clearSelectionAreaPrompt();
+        }
+
+
+        // ---------------------------------------------------------------------
+        // STEP 2: ADD-ONS
+        // ---------------------------------------------------------------------
+
+        function renderAddOnsSelection() {
+            updateNavStyles('nav-order-builder');
+            calculateOrder();
+            
+            APP_CONTAINER.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 2: Choose Your Add-ons</h3>
+                        <p class="text-gray-600 mb-6">Enhance your BuoBuo Ka with optional add-ons like delivery, display boxes, or lights.</p>
+                        
+                        <div class="space-y-4">
+                            ${ADD_ONS.map(addon => `
+                                <div class="bg-white p-4 rounded-xl shadow-md border ${orderData.addOns[addon.id] ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} transition-all flex items-start space-x-4">
+                                    <input type="checkbox" id="addon-${addon.id}" data-addon-id="${addon.id}" onchange="window.app.updateAddOns(this)" 
+                                           ${orderData.addOns[addon.id] ? 'checked' : ''}
+                                           class="mt-1 h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                    <label for="addon-${addon.id}" class="flex-grow">
+                                        <div class="font-bold text-lg text-gray-800">${addon.name}</div>
+                                        <p class="text-sm text-gray-500">${addon.description}</p>
+                                    </label>
+                                    <span class="text-lg font-extrabold text-blue-600 flex-shrink-0">${formatCurrency(addon.price)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="lg:col-span-1">
+                        <div id="order-summary-container"></div>
+                        <button onclick="window.app.goBack()" class="mt-6 text-gray-500 hover:text-gray-800 transition-colors block w-full text-center">← Back to Edit Order</button>
+                        <button onclick="window.app.selectStep('details')" class="mt-4 btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg">
+                            Proceed to Contact Details →
+                        </button>
+                    </div>
+                </div>
+            `;
+            currentStep = 'addons';
+            updateSummaryDisplay();
+        }
+
+        function updateAddOns(checkbox) {
+            const id = checkbox.dataset.addonId;
+            orderData.addOns[id] = checkbox.checked;
+
+            // Simple logic to handle combo exclusivity (optional, but good practice)
+            if (id === 'combo' && checkbox.checked) {
+                // If combo is checked, uncheck individual components
+                orderData.addOns['ferry_lights'] = false;
+                orderData.addOns['acrylic_box'] = false;
+            } else if ((id === 'ferry_lights' || id === 'acrylic_box') && checkbox.checked) {
+                // If an individual component is checked, uncheck combo
+                orderData.addOns['combo'] = false;
+            }
+            
+            // Re-render the add-ons section to update checkboxes and recalculate totals
+            renderAddOnsSelection();
+        }
+
+        // ---------------------------------------------------------------------
+        // STEP 3: DETAILS FORM
+        // ---------------------------------------------------------------------
+
+        function renderDetailsForm() {
+            updateNavStyles('nav-order-builder');
+            calculateOrder();
+
+            APP_CONTAINER.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 3: Contact & Delivery Details</h3>
+                        <p class="text-gray-600 mb-6">We need your details to process the order and coordinate delivery.</p>
+                        
+                        <form id="details-form" onsubmit="event.preventDefault(); window.app.selectStep('confirmation')">
+                            <div class="space-y-6 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                                        <input type="text" id="name" value="${orderData.name}" required 
+                                               oninput="orderData.name = this.value"
+                                               class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label for="email" class="block text-sm font-medium text-gray-700">Email Address</label>
+                                        <input type="email" id="email" value="${orderData.email}" required 
+                                               oninput="orderData.email = this.value"
+                                               class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="md:col-span-2">
+                                        <label for="phone" class="block text-sm font-medium text-gray-700">Phone Number</label>
+                                        <input type="tel" id="phone" value="${orderData.phone}" required 
+                                               oninput="orderData.phone = this.value"
+                                               class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label for="address" class="block text-sm font-medium text-gray-700">Delivery Address</label>
+                                        <textarea id="address" rows="3" required 
+                                                  oninput="orderData.address = this.value"
+                                                  class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">${orderData.address}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg">
+                                Review & Confirm Order →
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="lg:col-span-1">
+                        <div id="order-summary-container"></div>
+                        <button onclick="window.app.goBack()" class="mt-6 text-gray-500 hover:text-gray-800 transition-colors block w-full text-center">← Back to Edit Add-ons</button>
+                    </div>
+                </div>
+            `;
+            currentStep = 'details';
+            updateSummaryDisplay();
+        }
+
+        // ---------------------------------------------------------------------
+        // STEP 4: CONFIRMATION
+        // ---------------------------------------------------------------------
         function renderConfirmation() {
             calculateOrder();
             const productCount = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -501,9 +847,11 @@
             `;
             currentStep = 'confirmation';
         }
-        
-        // --- MANAGER DASHBOARD FUNCTIONS ---
-        
+
+        // ---------------------------------------------------------------------
+        // DASHBOARD FUNCTIONS
+        // ---------------------------------------------------------------------
+
         function renderOrderDashboard() {
             updateNavStyles('nav-manager-dashboard');
             currentStep = 'dashboard_gated';
@@ -602,7 +950,6 @@
         }
         
         function displayOrders(orders) {
-            // ... (Same as before) ...
             const dashboardContent = document.getElementById('dashboard-content');
             
             if (orders.length === 0) {
@@ -651,15 +998,55 @@
             dashboardContent.innerHTML = tableHtml;
         }
 
-        // --- HANDLER FUNCTIONS (Same as before) ---
-        // ... (all handler functions remain the same) ...
+        // ---------------------------------------------------------------------
+        // NAVIGATION & MODAL FUNCTIONS
+        // ---------------------------------------------------------------------
+
+        function selectStep(step) {
+            if (step === 'mode_selection') renderModeSelection();
+            else if (step === 'addons') renderAddOnsSelection();
+            else if (step === 'details') renderDetailsForm();
+            else if (step === 'confirmation') renderConfirmation();
+        }
+
+        function goBack() {
+             switch (currentStep) {
+                case 'addons':
+                    selectStep('mode_selection');
+                    break;
+                case 'details':
+                    selectStep('addons');
+                    break;
+                case 'confirmation':
+                    selectStep('details');
+                    break;
+            }
+        }
+
+        function showMessage(title, text, buttonText) {
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-text').innerHTML = text;
+            document.getElementById('message-button').textContent = buttonText;
+            document.getElementById('message-button').onclick = hideMessage;
+            MESSAGE_BOX.classList.remove('hidden');
+            MESSAGE_BOX.classList.add('flex');
+        }
+
+        function hideMessage() {
+            MESSAGE_BOX.classList.add('hidden');
+            MESSAGE_BOX.classList.remove('flex');
+        }
+
+
+        // ---------------------------------------------------------------------
+        // SUBMISSION
+        // ---------------------------------------------------------------------
 
         function submitOrder() {
             if (dbStatus !== 'ready' || !db) {
-                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established. Check the status at the bottom of the page.', 'continue');
+                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established, or contact support if the status is red.', 'continue');
             }
             
-            // ... (rest of submitOrder is the same) ...
             try {
                 calculateOrder();
                 
@@ -693,22 +1080,6 @@
             }
         }
         
-        // ... (showMessage, hideMessage, selectStep, goBack are the same) ...
-        
-        function goBack() {
-             switch (currentStep) {
-                case 'addons':
-                    selectStep('mode_selection');
-                    break;
-                case 'details':
-                    selectStep('addons');
-                    break;
-                case 'confirmation':
-                    selectStep('details');
-                    break;
-            }
-        }
-
         // --- APP INITIALIZATION AND EXPORT ---
         
         // 1. Expose the API immediately for the HTML onclick attributes
@@ -731,7 +1102,7 @@
 
         // 2. Start the application immediately when the script is parsed
         initializeFirebase(); 
-        renderModeSelection();
+        renderModeSelection(); // This is the crucial line for rendering the initial UI!
 
     </script>
 </body>
