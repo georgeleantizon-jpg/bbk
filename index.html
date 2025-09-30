@@ -140,7 +140,6 @@
         ];
 
         // --- IMAGE UPDATE AREA ---
-        // Replace the placeholder URLs below with your actual product image URLs.
         const PRESETS = {
             '3D': [
                 { id: '3d-1', name: 'Geo-Prism Tower', imageUrl: 'https://placehold.co/200x200/3B82F6/FFFFFF/?text=Geo-Prism' }, 
@@ -198,7 +197,6 @@
             });
 
             let discount = 0;
-            // The Faction Promo: 10% off the highest costing product if product count >= 3
             if (productCount >= 3) {
                 discount = highestProductPrice * 0.10;
             }
@@ -337,7 +335,7 @@
             `;
             currentStep = 'mode_selection';
             updateSummaryDisplay();
-            clearSelectionAreaPrompt(); // Initial prompt or proceed prompt
+            clearSelectionAreaPrompt(); 
         }
 
         function renderPresetSelection(dimension) {
@@ -374,6 +372,7 @@
                     </div>
                 </div>
             `;
+            // Check state again after rendering
             const tempId = document.getElementById('selected-design-id').value;
             if (tempId) {
                 const designCard = document.getElementById(`design-${tempId}`);
@@ -429,7 +428,6 @@
                     </div>
                 </div>
             `;
-            // Ensure state matches initial radio buttons
             if (orderData.customization.dimension) {
                 document.querySelector(`input[value="${orderData.customization.dimension}"]`).checked = true;
                 updateCustomPriceDisplay();
@@ -579,7 +577,8 @@
         function updateCustomButtonState() {
              const customBtn = document.getElementById('add-to-order-btn-custom');
              if (customBtn) {
-                 const quantity = parseInt(document.getElementById('quantity-input-custom').value);
+                 const quantityInput = document.getElementById('quantity-input-custom');
+                 const quantity = quantityInput ? parseInt(quantityInput.value) : 0;
                  const isValid = orderData.customization.dimension && orderData.customization.photoFileName && quantity > 0;
                  customBtn.disabled = !isValid;
              }
@@ -605,10 +604,12 @@
         function selectDesign(id, dimension) {
             const currentSelection = document.getElementById('selected-design-id');
             const newSelection = document.getElementById(`design-${id}`);
+            const addButton = document.getElementById('add-to-order-btn'); // Get the button
 
             // Deselect old
             if (currentSelection.value) {
-                document.getElementById(`design-${currentSelection.value}`).classList.remove('selected');
+                const oldSelection = document.getElementById(`design-${currentSelection.value}`);
+                if (oldSelection) oldSelection.classList.remove('selected');
             }
 
             // Select new
@@ -616,17 +617,19 @@
             currentSelection.value = id;
             
             // Enable button
-            document.getElementById('add-to-order-btn').disabled = false;
+            if (addButton) addButton.disabled = false;
         }
         
         function validateQuantity(input) {
             let value = parseInt(input.value);
             if (isNaN(value) || value < 1) {
                 input.value = 1;
+                value = 1;
             }
             if (currentStep === 'mode_selection' && document.getElementById('add-to-order-btn-custom')) {
                  updateCustomButtonState(); // Re-validate custom button state
             }
+            // For preset mode, we only need to ensure a design is selected, not the quantity value
         }
 
         function updateCustomPriceDisplay() {
@@ -713,7 +716,7 @@
             calculateOrder();
             clearSelectionAreaPrompt();
             
-            // Re-render to clear selection controls
+            // Re-render to clear selection controls/reset state
             if (type === 'preset') {
                 renderPresetSelection(newItem.dimension);
             } else {
@@ -729,7 +732,6 @@
             }
             
             try {
-                // Ensure the final calculations are correct
                 calculateOrder();
                 
                 const orderToSave = {
@@ -772,7 +774,6 @@
             } else if (buttonText === 'refresh') {
                  document.getElementById('message-button').onclick = () => window.location.reload();
             }
-             // For "Start New Order" case, the handler is set in submitOrder()
         }
 
         function hideMessage() {
@@ -784,6 +785,7 @@
             // Save contact details if moving from details to confirmation
             if (currentStep === 'details') {
                 const form = document.getElementById('details-form');
+                // Use built-in validation to check required fields
                 if (form && !form.checkValidity()) {
                      form.reportValidity();
                      return;
@@ -824,13 +826,10 @@
             }
         }
 
-        // --- APP INITIALIZATION ---
-
-        const app = {
-            init: () => {
-                initializeFirebase();
-                renderModeSelection(); // This is what starts the UI flow
-            },
+        // --- APP INITIALIZATION AND EXPORT ---
+        
+        // 1. Expose the API immediately for the HTML onclick attributes
+        window.app = {
             selectStep: selectStep,
             selectMode: selectMode,
             selectDesign: selectDesign,
@@ -843,12 +842,17 @@
             goBack: goBack,
             submitOrder: submitOrder
         };
-        
-        // Export the app object globally so HTML onclick handlers can access it
-        window.app = app;
 
-        // Start the application when the window finishes loading
-        window.onload = app.init;
+        // 2. Define the main startup function
+        function startApp() {
+            // Start Firebase initialization in the background
+            initializeFirebase(); 
+            // Immediately render the first step to ensure UI loads fast
+            renderModeSelection();
+        }
+
+        // 3. Start the application immediately when the script is parsed
+        startApp();
         
     </script>
 </body>
