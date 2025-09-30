@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Pre-Order Form</title>
+    <title>BuoBuo Ka Pre-Order Form</title>
     <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind for Inter font and custom colors -->
@@ -66,7 +66,10 @@
                 </div>
             </div>
 
-            <div id="status-message" class="text-center h-6 text-sm font-medium"></div>
+            <!-- Status Message Display -->
+            <div id="status-message" class="text-center h-6 text-sm font-medium">
+                 Initializing connection...
+            </div>
 
             <button onclick="submitPreOrder()" id="submit-button" disabled
                     class="w-full py-3 px-4 bg-primary text-white font-semibold rounded-lg shadow-lg hover:bg-primary-dark transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01]">
@@ -104,13 +107,26 @@
         const itemEl = document.getElementById('item-name');
         const quantityEl = document.getElementById('quantity');
         
-        // Use the globally provided configuration and application ID
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        // ----------------------------------------------------------------------
+        // *** CONFIGURATION: USING YOUR PROVIDED FIREBASE DETAILS ***
+        // ----------------------------------------------------------------------
+        const userProvidedConfig = {
+            apiKey: "AIzaSyAY2GPRaHbU7vfA8J79mewyo2u6qHr-a6s",
+            authDomain: "buobuo-ka-81320.firebaseapp.com",
+            projectId: "buobuo-ka-81320",
+            storageBucket: "buobuo-ka-81320.firebasestorage.app",
+            messagingSenderId: "687871046289",
+            appId: "1:687871046289:web:e8efb15aa500add7164530",
+            measurementId: "G-S2XMMG6P9W"
+        };
+
+        // Use the globally provided config as a fallback/check, but prioritize the explicit config here.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : userProvidedConfig;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        if (!firebaseConfig) {
-            console.error("Firebase config is missing. Cannot initialize Firebase.");
-            statusMessageEl.textContent = "Configuration Error.";
+        if (!firebaseConfig || !firebaseConfig.apiKey) {
+            console.error("Firebase config is critically missing.");
+            statusMessageEl.textContent = "Critical Error: Configuration Missing.";
         } else {
             initializeFirebase();
         }
@@ -122,7 +138,7 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 3. AUTHENTICATION SETUP (Hidden from user, but provides unique ID)
+                // 3. AUTHENTICATION SETUP (Silent Sign-in)
                 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
                 if (initialAuthToken) {
@@ -139,13 +155,14 @@
                         submitButtonEl.disabled = false;
                         submitButtonEl.textContent = "Submit Pre-Order";
                         console.log(`Unique Customer ID: ${userId}`);
-                        statusMessageEl.textContent = "Ready to take order.";
+                        statusMessageEl.textContent = "Database Connected. Ready to take order.";
+                        statusMessageEl.classList.remove('text-red-500');
                         statusMessageEl.classList.add('text-primary-dark');
                     } else {
                         userId = null;
                         submitButtonEl.disabled = true;
-                        submitButtonEl.textContent = "Initializing...";
-                        statusMessageEl.textContent = "Failed to initialize identity.";
+                        submitButtonEl.textContent = "Authentication Failed";
+                        statusMessageEl.textContent = "Failed to secure customer identity.";
                         statusMessageEl.classList.add('text-red-500');
                     }
                 });
@@ -161,9 +178,7 @@
         window.submitPreOrder = async function() {
             if (!userId) {
                 console.error("Authentication not complete. Cannot submit.");
-                statusMessageEl.textContent = "Please wait for initialization...";
-                statusMessageEl.classList.remove('text-green-700');
-                statusMessageEl.classList.add('text-red-500');
+                statusMessageEl.textContent = "Please wait for connection...";
                 return;
             }
 
@@ -186,6 +201,7 @@
 
             try {
                 // Path: /artifacts/{appId}/users/{userId}/preorders
+                // NOTE: Orders are saved under the user's private path for this application.
                 const ordersCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/preorders`);
 
                 await addDoc(ordersCollectionRef, {
@@ -200,6 +216,7 @@
                 
                 // Success feedback
                 statusMessageEl.textContent = "Pre-Order submitted successfully! We'll contact you soon.";
+                statusMessageEl.classList.remove('text-red-500');
                 statusMessageEl.classList.add('text-primary-dark');
 
                 // Clear form
@@ -207,12 +224,12 @@
                 emailEl.value = '';
                 quantityEl.value = '1';
 
-                console.log(`Order saved for user ${userId}.`);
+                console.log(`Order saved for user ${userId} in collection: ${ordersCollectionRef.path}`);
 
             } catch (error) {
                 console.error("Error submitting pre-order:", error);
                 // Display error to the user
-                statusMessageEl.textContent = `Order Failed: ${error.code || 'Unknown Error'}`;
+                statusMessageEl.textContent = `Order Failed: ${error.code || 'Unknown Error'}. Check Firestore rules.`;
                 statusMessageEl.classList.add('text-red-500');
             } finally {
                 submitButtonEl.textContent = "Submit Pre-Order";
