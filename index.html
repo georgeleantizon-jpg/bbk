@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase Real-Time Message Sync</title>
+    <title>Simple Pre-Order Form</title>
     <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind for Inter font and custom colors -->
@@ -15,9 +15,9 @@
                         sans: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        'primary': '#4f46e5',
-                        'primary-dark': '#4338ca',
-                        'background': '#f3f4f6',
+                        'primary': '#10b981', /* Emerald for a fresh, commerce feel */
+                        'primary-dark': '#059669',
+                        'background': '#f9fafb',
                         'card': '#ffffff',
                     }
                 }
@@ -30,41 +30,50 @@
 </head>
 <body class="bg-background min-h-screen flex items-center justify-center p-4 font-sans">
 
-    <div id="app-container" class="w-full max-w-lg bg-card shadow-2xl rounded-xl p-8 space-y-6 transform transition duration-300">
+    <div id="app-container" class="w-full max-w-md bg-card shadow-2xl rounded-xl p-8 space-y-6 transform transition duration-300 border border-gray-100">
         
-        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Real-Time Message Sync</h1>
+        <h1 class="text-3xl font-extrabold text-gray-900 text-center">Place Your Pre-Order</h1>
         <p class="text-center text-sm text-gray-500">
-            Uses Firestore to sync a message across all users instantly.
+            Securely reserve your item. Your unique customer ID will be attached to this order.
         </p>
 
-        <!-- Status and User ID Display -->
-        <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-            <p id="auth-status" class="text-sm font-medium text-indigo-700">
-                Authentication Status: <span class="font-bold">Initializing...</span>
-            </p>
-            <p id="user-id-display" class="text-xs text-indigo-500 truncate mt-1">
-                User ID: N/A
-            </p>
-        </div>
-
-        <!-- Current Message Display -->
-        <div class="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300 min-h-[8rem] flex items-center justify-center transition duration-200 hover:border-primary-dark">
-            <p id="realtime-message" class="text-2xl font-bold text-gray-800 text-center italic">
-                Awaiting connection...
-            </p>
-        </div>
-
-        <!-- Input and Update Button -->
+        <!-- Form Inputs -->
         <div class="space-y-4">
-            <input type="text" id="new-message-input" placeholder="Type a new real-time message..." 
-                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" />
+            <div>
+                <label for="customer-name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                <input type="text" id="customer-name" placeholder="John Doe" 
+                       class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
+            </div>
+            <div>
+                <label for="customer-email" class="block text-sm font-medium text-gray-700">Email Address</label>
+                <input type="email" id="customer-email" placeholder="john@example.com" 
+                       class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
+            </div>
+            <div>
+                <label for="item-name" class="block text-sm font-medium text-gray-700">Item to Pre-Order</label>
+                <select id="item-name" 
+                        class="mt-1 w-full p-3 border border-gray-300 bg-white rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm">
+                    <option value="Product X">Product X (Premium)</option>
+                    <option value="Product Y">Product Y (Standard)</option>
+                    <option value="Service Z">Service Z (Consultation)</option>
+                </select>
+            </div>
+            <div class="flex space-x-4">
+                <div class="flex-1">
+                    <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+                    <input type="number" id="quantity" value="1" min="1" 
+                           class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 shadow-sm" required />
+                </div>
+            </div>
 
-            <button onclick="updateMessage()" id="update-button" disabled
+            <div id="status-message" class="text-center h-6 text-sm font-medium"></div>
+
+            <button onclick="submitPreOrder()" id="submit-button" disabled
                     class="w-full py-3 px-4 bg-primary text-white font-semibold rounded-lg shadow-lg hover:bg-primary-dark transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.01]">
-                Update Shared Message
+                Submit Pre-Order
             </button>
         </div>
-
+        
     </div>
 
     <!-- Firebase Initialization and Application Logic -->
@@ -74,7 +83,7 @@
         // ----------------------------------------------------------------------
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Enable Firebase debug logging
         setLogLevel('Debug');
@@ -84,14 +93,16 @@
         // ----------------------------------------------------------------------
         let db;
         let auth;
-        let userId = null;
-        let messageDocRef = null;
+        let userId = null; // The unique customer ID we'll attach to the order
 
-        const authStatusEl = document.getElementById('auth-status').querySelector('span');
-        const userIdDisplayEl = document.getElementById('user-id-display');
-        const messageEl = document.getElementById('realtime-message');
-        const inputEl = document.getElementById('new-message-input');
-        const updateButtonEl = document.getElementById('update-button');
+        const statusMessageEl = document.getElementById('status-message');
+        const submitButtonEl = document.getElementById('submit-button');
+        
+        // Form element references
+        const nameEl = document.getElementById('customer-name');
+        const emailEl = document.getElementById('customer-email');
+        const itemEl = document.getElementById('item-name');
+        const quantityEl = document.getElementById('quantity');
         
         // Use the globally provided configuration and application ID
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
@@ -99,8 +110,7 @@
 
         if (!firebaseConfig) {
             console.error("Firebase config is missing. Cannot initialize Firebase.");
-            authStatusEl.textContent = "Error: Config Missing";
-            authStatusEl.classList.add('text-red-700');
+            statusMessageEl.textContent = "Configuration Error.";
         } else {
             initializeFirebase();
         }
@@ -112,8 +122,7 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 3. AUTHENTICATION SETUP
-                // Use custom token if provided, otherwise sign in anonymously
+                // 3. AUTHENTICATION SETUP (Hidden from user, but provides unique ID)
                 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
                 if (initialAuthToken) {
@@ -125,99 +134,89 @@
                 // 4. AUTH STATE CHANGE LISTENER
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
+                        // User is now signed in (anonymously or via custom token)
                         userId = user.uid;
-                        authStatusEl.textContent = "Connected";
-                        authStatusEl.classList.remove('text-indigo-700');
-                        authStatusEl.classList.add('text-green-700');
-                        userIdDisplayEl.textContent = `User ID: ${userId}`;
-                        updateButtonEl.disabled = false;
-                        
-                        // Proceed to Firestore setup only after successful authentication
-                        setupFirestoreListener();
+                        submitButtonEl.disabled = false;
+                        submitButtonEl.textContent = "Submit Pre-Order";
+                        console.log(`Unique Customer ID: ${userId}`);
+                        statusMessageEl.textContent = "Ready to take order.";
+                        statusMessageEl.classList.add('text-primary-dark');
                     } else {
                         userId = null;
-                        authStatusEl.textContent = "Signed Out";
-                        authStatusEl.classList.remove('text-green-700');
-                        authStatusEl.classList.add('text-red-700');
-                        userIdDisplayEl.textContent = "User ID: N/A";
-                        updateButtonEl.disabled = true;
+                        submitButtonEl.disabled = true;
+                        submitButtonEl.textContent = "Initializing...";
+                        statusMessageEl.textContent = "Failed to initialize identity.";
+                        statusMessageEl.classList.add('text-red-500');
                     }
                 });
 
             } catch (error) {
                 console.error("Error during Firebase initialization or sign-in:", error);
-                authStatusEl.textContent = `Error: ${error.code || 'Unknown'}`;
-                authStatusEl.classList.remove('text-indigo-700');
-                authStatusEl.classList.add('text-red-700');
+                statusMessageEl.textContent = `Initialization Error: ${error.code || 'Unknown'}`;
+                statusMessageEl.classList.add('text-red-500');
             }
         }
 
-        // 5. FIRESTORE REAL-TIME LISTENER
-        function setupFirestoreListener() {
-            // Path: /artifacts/{appId}/public/data/messages/shared_message
-            const collectionPath = `artifacts/${appId}/public/data/messages`;
-            messageDocRef = doc(db, collectionPath, 'shared_message');
-
-            // Set up a real-time listener for the document
-            onSnapshot(messageDocRef, (docSnapshot) => {
-                if (docSnapshot.exists()) {
-                    const data = docSnapshot.data();
-                    const messageText = data.text || "No message set yet.";
-                    const updatedBy = data.lastUpdatedBy || "System";
-                    
-                    messageEl.innerHTML = `"${messageText}" <br><span class="text-sm font-normal text-gray-500">- Last updated by: ${updatedBy.substring(0, 8)}...</span>`;
-                    inputEl.value = data.text || ''; // Keep input synced
-                } else {
-                    // Initialize the document if it doesn't exist
-                    messageEl.textContent = "Initializing shared message...";
-                    setDoc(messageDocRef, { 
-                        text: "Welcome! Be the first to update the message.", 
-                        timestamp: serverTimestamp(),
-                        lastUpdatedBy: 'System'
-                    }, { merge: true }).catch(e => console.error("Error initializing document:", e));
-                }
-            }, (error) => {
-                console.error("Error listening to message document:", error);
-                messageEl.textContent = "Error loading message data.";
-                messageEl.classList.add('text-red-500');
-            });
-        }
-
-        // 6. FIRESTORE UPDATE FUNCTION (Exposed globally)
-        window.updateMessage = async function() {
-            if (!messageDocRef || !userId) {
-                console.error("Firestore or Auth not initialized.");
+        // 5. FIRESTORE SUBMISSION FUNCTION (Exposed globally)
+        window.submitPreOrder = async function() {
+            if (!userId) {
+                console.error("Authentication not complete. Cannot submit.");
+                statusMessageEl.textContent = "Please wait for initialization...";
+                statusMessageEl.classList.remove('text-green-700');
+                statusMessageEl.classList.add('text-red-500');
                 return;
             }
 
-            const newMessage = inputEl.value.trim();
-            if (newMessage === "") {
-                inputEl.placeholder = "Message cannot be empty!";
-                inputEl.classList.add('border-red-500');
-                setTimeout(() => {
-                    inputEl.classList.remove('border-red-500');
-                    inputEl.placeholder = "Type a new real-time message...";
-                }, 2000);
+            const name = nameEl.value.trim();
+            const email = emailEl.value.trim();
+            const item = itemEl.value;
+            const quantity = parseInt(quantityEl.value, 10);
+            
+            // Basic Form Validation
+            if (!name || !email || quantity < 1 || isNaN(quantity)) {
+                statusMessageEl.textContent = "Please fill in all fields correctly.";
+                statusMessageEl.classList.add('text-red-500');
                 return;
             }
 
-            updateButtonEl.disabled = true;
-            updateButtonEl.textContent = "Updating...";
+            submitButtonEl.disabled = true;
+            submitButtonEl.textContent = "Processing Order...";
+            statusMessageEl.textContent = "";
+            statusMessageEl.classList.remove('text-red-500', 'text-primary-dark');
 
             try {
-                await updateDoc(messageDocRef, {
-                    text: newMessage,
+                // Path: /artifacts/{appId}/users/{userId}/preorders
+                const ordersCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/preorders`);
+
+                await addDoc(ordersCollectionRef, {
+                    customerName: name,
+                    customerEmail: email,
+                    itemName: item,
+                    quantity: quantity,
+                    customerUserId: userId, // Incorporating the unique ID as requested
+                    status: 'PENDING',
                     timestamp: serverTimestamp(),
-                    lastUpdatedBy: userId,
                 });
-                console.log("Message successfully updated!");
+                
+                // Success feedback
+                statusMessageEl.textContent = "Pre-Order submitted successfully! We'll contact you soon.";
+                statusMessageEl.classList.add('text-primary-dark');
+
+                // Clear form
+                nameEl.value = '';
+                emailEl.value = '';
+                quantityEl.value = '1';
+
+                console.log(`Order saved for user ${userId}.`);
+
             } catch (error) {
-                console.error("Error updating document:", error);
+                console.error("Error submitting pre-order:", error);
                 // Display error to the user
-                messageEl.textContent = `Update Failed: ${error.code || 'Unknown Error'}`;
+                statusMessageEl.textContent = `Order Failed: ${error.code || 'Unknown Error'}`;
+                statusMessageEl.classList.add('text-red-500');
             } finally {
-                updateButtonEl.textContent = "Update Shared Message";
-                updateButtonEl.disabled = false;
+                submitButtonEl.textContent = "Submit Pre-Order";
+                submitButtonEl.disabled = false;
             }
         };
 
