@@ -142,6 +142,10 @@
             firebaseConfig = MOCK_FIREBASE_CONFIG;
         }
 
+        // --- DEBUG LINE INSERTED HERE ---
+        // This will print the actual config object the app is using to try and initialize Firebase.
+        console.log('--- DEBUG: Actual Firebase Config Loaded ---', firebaseConfig);
+        // --------------------------------
         
         // Lookup elements that are guaranteed to exist when the script loads since it is at the end of <body>
         const authInfoEl = document.getElementById('auth-info');
