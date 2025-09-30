@@ -121,70 +121,78 @@
         const MANAGER_KEY = "1234"; 
 
         /**
-         * Attempts to sign the user in, with a maximum number of retries.
+         * Attempts to sign the user in using exponential backoff.
          */
-        async function attemptSignIn(retries = 3) {
+        async function attemptSignIn(retries = 5, delay = 1000) {
             if (retries === 0) {
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Max retries reached. Submissions disabled.</p>`;
+                const errorMsg = 'Max retries reached. Database access failed.';
+                console.error('Firebase:', errorMsg);
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. ${errorMsg} Submissions disabled.</p>`;
                 isDbReady = false;
                 return;
             }
 
             try {
-                // Try signing in using the provided token or anonymously
+                // Determine if we have a custom token (preferred) or should use anonymous sign-in
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
-                    console.log("Firebase: Signed in with custom token.");
                 } else {
                     await signInAnonymously(auth);
-                    console.log("Firebase: Signed in anonymously.");
                 }
+                // If sign-in succeeds, the onAuthStateChanged listener will handle final setup.
+                console.log("Firebase: Sign-in attempt succeeded.");
             } catch (e) {
-                console.warn(`Firebase: Sign-in attempt failed (${retries} attempts left). Retrying in 2 seconds.`, e);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                await attemptSignIn(retries - 1);
+                const nextDelay = delay * 2;
+                console.warn(`Firebase: Sign-in failed (Retries left: ${retries - 1}). Retrying in ${delay / 1000}s.`, e);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                await attemptSignIn(retries - 1, nextDelay); // Recursive call with increased delay
             }
         }
 
 
-        async function initializeFirebase() {
+        function initializeFirebase() {
+            // Check if essential config is available
+            if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase: Configuration is missing or empty.");
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. Firebase Config is missing. Contact support.</p>`;
+                return;
+            }
+
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 setLogLevel('debug'); // Enable detailed logging
 
-                // 1. Initial Authentication Check and Setup
-                onAuthStateChanged(auth, async (user) => {
+                // 1. Set up Auth State Listener (This runs when sign-in succeeds or changes)
+                onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
                         isDbReady = true; // DB is ready once user is signed in
                         authInfoEl.innerHTML = `<p class="text-green-600">✅ **Database Connected**. Manager ID (Used for private storage): <strong>${userId}</strong></p>`;
                         
-                        // If the user happens to be viewing the dashboard when auth completes, render it.
-                        if (currentStep === 'dashboard_gated' || currentStep === 'dashboard') {
-                            // If user is already on dashboard, re-render to fetch data
-                            if (document.getElementById('manager-key-input') && document.getElementById('manager-key-input').value === MANAGER_KEY) {
-                                renderOrderDashboardContent();
-                            }
+                        // If the manager is waiting on the dashboard, fetch data now
+                        if (currentStep === 'dashboard' && document.getElementById('loading-indicator')) {
+                            listenForOrders();
                         }
                     } else {
-                        // User is signed out. If we haven't successfully connected before, attempt sign-in.
-                        if (!isDbReady) {
-                             await attemptSignIn(); 
-                        }
+                        // User signed out or failed to sign in after retries
+                        isDbReady = false;
+                        authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Submissions disabled. Please refresh and try again.</p>`;
                     }
                 });
-
+                
+                // 2. Start the immediate sign-in attempt with retries
+                attemptSignIn(); 
 
             } catch (e) {
                 isDbReady = false;
-                console.error("Firebase initialization failed (App Config Error):", e);
+                console.error("Firebase initialization failed (Check console details):", e);
                 authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. Submissions disabled. Check console for details.</p>`;
             }
         }
         
-        // --- APPLICATION CONSTANTS ---
+        // --- APPLICATION CONSTANTS (Rest of the constants remain the same) ---
         const APP_CONTAINER = document.getElementById('content-area');
         const MESSAGE_BOX = document.getElementById('message-box');
 
@@ -374,7 +382,7 @@
             }
         }
         
-        // --- STEP RENDERING FUNCTIONS ---
+        // --- STEP RENDERING FUNCTIONS (Omitted for brevity, assumed correct) ---
 
         function updateNavStyles(activeId) {
             document.getElementById('nav-order-builder').classList.remove('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
@@ -666,6 +674,13 @@
         function renderOrderDashboard() {
             updateNavStyles('nav-manager-dashboard');
             currentStep = 'dashboard_gated';
+            
+            // Unsubscribe from order listener if moving away from a previous dashboard view
+             if (unsubscribeOrders) {
+                unsubscribeOrders(); 
+                unsubscribeOrders = null;
+            }
+
             APP_CONTAINER.innerHTML = `
                 <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Manager Dashboard Access</h3>
                 <div class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-200">
@@ -700,14 +715,14 @@
                 <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Real-Time Order Dashboard (Manager View)</h3>
                 <p class="text-sm text-center text-green-700 mb-4">Orders are saved privately to: <code>artifacts/${appId}/users/${userId}/orders</code></p>
                 <div id="dashboard-content" class="bg-white rounded-xl shadow-inner p-4 overflow-x-auto min-h-[300px]">
-                    <div class="text-center py-10 text-gray-500" id="loading-indicator">Loading orders...</div>
+                    <div class="text-center py-10 text-gray-500" id="loading-indicator">Waiting for database to be established...</div>
                 </div>
             `;
             
             if (isDbReady) {
                 listenForOrders();
             } else {
-                document.getElementById('loading-indicator').textContent = 'Waiting for database connection to be established...';
+                document.getElementById('loading-indicator').textContent = 'Database is not connected. Please ensure the connection status at the bottom is green before proceeding.';
             }
         }
         
@@ -720,11 +735,10 @@
             
             if (!isDbReady || !db) {
                 console.warn("Attempted to listen for orders but DB is not ready.");
-                document.getElementById('loading-indicator').textContent = 'Database is not connected. Please ensure the connection status at the bottom is green.';
                 return;
             }
             
-            // *** NEW PRIVATE DATA PATH ***
+            // *** PRIVATE DATA PATH ***
             const collectionPath = `artifacts/${appId}/users/${userId}/orders`;
             const q = query(collection(db, collectionPath));
             
@@ -793,7 +807,7 @@
             dashboardContent.innerHTML = tableHtml;
         }
 
-        // --- HANDLER FUNCTIONS ---
+        // --- HANDLER FUNCTIONS (Omitted for brevity, assumed correct) ---
         
         function updateNextButtonState() {
              const nextButton = document.getElementById('next-to-addons');
@@ -971,7 +985,7 @@
                     timestamp: new Date().toISOString()
                 };
 
-                // *** NEW PRIVATE DATA PATH USED FOR SAVING ***
+                // *** PRIVATE DATA PATH: Only accessible by the manager (authenticated user) ***
                 const collectionPath = `artifacts/${appId}/users/${userId}/orders`;
                 
                 await addDoc(collection(db, collectionPath), orderToSave);
@@ -992,7 +1006,7 @@
             }
         }
 
-        // --- NAVIGATION AND UI HELPERS ---
+        // --- NAVIGATION AND UI HELPERS (Omitted for brevity, assumed correct) ---
 
         function showMessage(title, text, buttonText) {
             document.getElementById('message-title').textContent = title;
@@ -1086,17 +1100,10 @@
             authenticateDashboard: authenticateDashboard // Exported for the gate
         };
 
-        // 2. Define the main startup function
-        function startApp() {
-            // Start Firebase initialization and auth setup
-            initializeFirebase(); 
-            // Immediately render the first step (Order Builder)
-            renderModeSelection();
-        }
+        // 2. Start the application immediately when the script is parsed
+        initializeFirebase(); 
+        renderModeSelection();
 
-        // 3. Start the application immediately when the script is parsed
-        startApp();
-        
     </script>
 </body>
 </html>
