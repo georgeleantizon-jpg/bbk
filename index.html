@@ -52,6 +52,11 @@
         .dashboard-table-row:nth-child(even) {
             background-color: #f9fafb; /* Lighter background for striped effect */
         }
+        /* Dashboard Pin Gate Style */
+        .pin-input {
+            letter-spacing: 10px;
+            text-align: center;
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 sm:p-8 flex items-start justify-center">
@@ -111,14 +116,16 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const authInfoEl = document.getElementById('auth-info');
+        
+        // MANAGER GATE KEY: Use a simple PIN to restrict dashboard viewing
+        const MANAGER_KEY = "1234"; 
 
         /**
          * Attempts to sign the user in, with a maximum number of retries.
-         * This handles transient network errors during the initial authentication.
          */
         async function attemptSignIn(retries = 3) {
             if (retries === 0) {
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Sign-In Failed**. Max retries reached. Submissions disabled.</p>`;
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Max retries reached. Submissions disabled.</p>`;
                 isDbReady = false;
                 return;
             }
@@ -134,7 +141,6 @@
                 }
             } catch (e) {
                 console.warn(`Firebase: Sign-in attempt failed (${retries} attempts left). Retrying in 2 seconds.`, e);
-                // Exponential backoff principle (simplified to 2s delay)
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 await attemptSignIn(retries - 1);
             }
@@ -153,11 +159,14 @@
                     if (user) {
                         userId = user.uid;
                         isDbReady = true; // DB is ready once user is signed in
-                        authInfoEl.innerHTML = `<p class="text-green-600">✅ Database Connected. User ID: <strong>${userId}</strong></p>`;
+                        authInfoEl.innerHTML = `<p class="text-green-600">✅ **Database Connected**. Manager ID (Used for private storage): <strong>${userId}</strong></p>`;
                         
                         // If the user happens to be viewing the dashboard when auth completes, render it.
-                        if (currentStep === 'dashboard') {
-                            listenForOrders();
+                        if (currentStep === 'dashboard_gated' || currentStep === 'dashboard') {
+                            // If user is already on dashboard, re-render to fetch data
+                            if (document.getElementById('manager-key-input') && document.getElementById('manager-key-input').value === MANAGER_KEY) {
+                                renderOrderDashboardContent();
+                            }
                         }
                     } else {
                         // User is signed out. If we haven't successfully connected before, attempt sign-in.
@@ -486,7 +495,7 @@
                     <div class="bg-yellow-50 p-4 rounded-lg border-l-4 border-yellow-400 mb-4">
                         <p class="font-bold text-yellow-800 mb-1">Custom Upload Guidelines (Mandatory):</p>
                         <ul class="list-disc list-inside text-sm text-yellow-700 space-y-1">
-                           <li>*Note: Only the file name will be recorded for follow-up; the file itself is NOT uploaded.*</li>
+                           <li>*Note: Only the **file name** will be recorded for follow-up; the file itself is NOT uploaded.*</li>
                            <li>Please select a dimension above and then select your file.</li>
                            <li id="custom-price-display" class="font-bold">Price: ${formatCurrency(0)}</li>
                         </ul>
@@ -656,10 +665,40 @@
         
         function renderOrderDashboard() {
             updateNavStyles('nav-manager-dashboard');
+            currentStep = 'dashboard_gated';
+            APP_CONTAINER.innerHTML = `
+                <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Manager Dashboard Access</h3>
+                <div class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+                    <p class="text-gray-700 mb-4 text-center">Enter the Manager Key (PIN: **${MANAGER_KEY}**) to view private orders.</p>
+                    <div class="flex flex-col space-y-4">
+                        <input type="password" id="manager-key-input" maxlength="4" placeholder="••••"
+                               oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);"
+                               class="w-full text-3xl pin-input rounded-lg border-2 border-gray-300 p-3 focus:ring-blue-500 focus:border-blue-500">
+                        <button onclick="window.app.authenticateDashboard()" class="btn-primary px-6 py-3 rounded-lg font-semibold w-full">
+                            Access Dashboard
+                        </button>
+                    </div>
+                    <p id="dashboard-status" class="mt-4 text-sm text-center text-red-600"></p>
+                </div>
+            `;
+        }
+
+        function authenticateDashboard() {
+            const keyInput = document.getElementById('manager-key-input');
+            const statusEl = document.getElementById('dashboard-status');
+            if (keyInput.value === MANAGER_KEY) {
+                statusEl.textContent = "";
+                renderOrderDashboardContent();
+            } else {
+                statusEl.textContent = "Invalid Manager Key. Access Denied.";
+            }
+        }
+
+        function renderOrderDashboardContent() {
             currentStep = 'dashboard';
             APP_CONTAINER.innerHTML = `
                 <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Real-Time Order Dashboard (Manager View)</h3>
-                <p class="text-sm text-center text-gray-500 mb-4">Orders are saved to: <code>artifacts/${appId}/public/data/orders</code></p>
+                <p class="text-sm text-center text-green-700 mb-4">Orders are saved privately to: <code>artifacts/${appId}/users/${userId}/orders</code></p>
                 <div id="dashboard-content" class="bg-white rounded-xl shadow-inner p-4 overflow-x-auto min-h-[300px]">
                     <div class="text-center py-10 text-gray-500" id="loading-indicator">Loading orders...</div>
                 </div>
@@ -669,7 +708,6 @@
                 listenForOrders();
             } else {
                 document.getElementById('loading-indicator').textContent = 'Waiting for database connection to be established...';
-                // If not ready, the onAuthStateChanged listener will call listenForOrders() when it is ready.
             }
         }
         
@@ -682,11 +720,12 @@
             
             if (!isDbReady || !db) {
                 console.warn("Attempted to listen for orders but DB is not ready.");
-                document.getElementById('loading-indicator').textContent = 'Database is not yet connected.';
+                document.getElementById('loading-indicator').textContent = 'Database is not connected. Please ensure the connection status at the bottom is green.';
                 return;
             }
             
-            const collectionPath = `artifacts/${appId}/public/data/orders`;
+            // *** NEW PRIVATE DATA PATH ***
+            const collectionPath = `artifacts/${appId}/users/${userId}/orders`;
             const q = query(collection(db, collectionPath));
             
             // Set up real-time listener
@@ -920,7 +959,7 @@
         
         async function submitOrder() {
             if (!isDbReady || !db) {
-                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established or try refreshing the page.', 'continue');
+                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established. Check the connection status at the bottom of the page.', 'continue');
             }
             
             try {
@@ -928,12 +967,12 @@
                 
                 const orderToSave = {
                     ...orderData,
-                    userId: userId,
+                    userId: userId, // The user ID of the person who owns this session
                     timestamp: new Date().toISOString()
                 };
 
-                // Saving to public data path for managers to view
-                const collectionPath = `artifacts/${appId}/public/data/orders`;
+                // *** NEW PRIVATE DATA PATH USED FOR SAVING ***
+                const collectionPath = `artifacts/${appId}/users/${userId}/orders`;
                 
                 await addDoc(collection(db, collectionPath), orderToSave);
 
@@ -988,7 +1027,7 @@
             }
 
             // Clean up dashboard listener if leaving dashboard
-            if (currentStep === 'dashboard' && unsubscribeOrders) {
+            if ((currentStep === 'dashboard_gated' || currentStep === 'dashboard') && unsubscribeOrders) {
                 unsubscribeOrders();
                 unsubscribeOrders = null;
             }
@@ -1043,7 +1082,8 @@
             removeItem: removeItem,
             goBack: goBack,
             submitOrder: submitOrder,
-            renderOrderDashboard: renderOrderDashboard // Exported for the nav button
+            renderOrderDashboard: renderOrderDashboard, // Exported for the nav button
+            authenticateDashboard: authenticateDashboard // Exported for the gate
         };
 
         // 2. Define the main startup function
