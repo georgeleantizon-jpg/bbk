@@ -112,6 +112,34 @@
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const authInfoEl = document.getElementById('auth-info');
 
+        /**
+         * Attempts to sign the user in, with a maximum number of retries.
+         * This handles transient network errors during the initial authentication.
+         */
+        async function attemptSignIn(retries = 3) {
+            if (retries === 0) {
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Sign-In Failed**. Max retries reached. Submissions disabled.</p>`;
+                isDbReady = false;
+                return;
+            }
+
+            try {
+                // Try signing in using the provided token or anonymously
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                    console.log("Firebase: Signed in with custom token.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Firebase: Signed in anonymously.");
+                }
+            } catch (e) {
+                console.warn(`Firebase: Sign-in attempt failed (${retries} attempts left). Retrying in 2 seconds.`, e);
+                // Exponential backoff principle (simplified to 2s delay)
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await attemptSignIn(retries - 1);
+            }
+        }
+
 
         async function initializeFirebase() {
             try {
@@ -132,23 +160,18 @@
                             listenForOrders();
                         }
                     } else {
-                        // Attempt initial sign-in if not already authenticated
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
+                        // User is signed out. If we haven't successfully connected before, attempt sign-in.
+                        if (!isDbReady) {
+                             await attemptSignIn(); 
                         }
-                        
-                        // If sign-in was successful, the onAuthStateChanged will be triggered again with the user object.
                     }
                 });
 
 
             } catch (e) {
                 isDbReady = false;
-                console.error("Firebase initialization failed:", e);
-                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Offline**. Submissions disabled. Check console for details.</p>`;
-                // Do NOT show a modal here, just update the status message
+                console.error("Firebase initialization failed (App Config Error):", e);
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ **Database Initialization Failed**. Submissions disabled. Check console for details.</p>`;
             }
         }
         
@@ -897,7 +920,7 @@
         
         async function submitOrder() {
             if (!isDbReady || !db) {
-                return showMessage('Database Offline', 'Cannot submit order. Database connection failed. Please try again later.', 'continue');
+                return showMessage('Database Offline', 'Cannot submit order. Please wait for the database connection to be established or try refreshing the page.', 'continue');
             }
             
             try {
