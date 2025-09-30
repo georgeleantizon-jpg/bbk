@@ -116,7 +116,11 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Lookup elements that are guaranteed to exist when the script loads since it is at the end of <body>
         const authInfoEl = document.getElementById('auth-info');
+        const APP_CONTAINER = document.getElementById('content-area');
+        const MESSAGE_BOX = document.getElementById('message-box');
         
         // MANAGER GATE KEY: Use a simple PIN to restrict dashboard viewing
         const MANAGER_KEY = "1234"; 
@@ -197,9 +201,6 @@
         }
         
         // --- APPLICATION CONSTANTS ---
-        const APP_CONTAINER = document.getElementById('content-area');
-        const MESSAGE_BOX = document.getElementById('message-box');
-
         const BASE_PRICES = {
             '2D': 500.00,  // PHP
             '3D': 1500.00  // PHP
@@ -569,8 +570,7 @@
                 selectEl.options[1].textContent = `3D Engraving (${formatCurrency(BASE_PRICES['3D'])})`;
             }
             
-            // Re-render to update header price and button state if necessary
-            // Note: Since we are in the custom flow, we don't need a full re-render, just update the price
+            // Update header price
             const header = document.getElementById('selection-area').querySelector('h4');
             if(header) {
                 header.textContent = `Custom Image Upload (${formatCurrency(newPrice)})`;
@@ -1100,9 +1100,12 @@
             setAuthStatus: setAuthStatus // Exported for internal status management
         };
 
-        // 2. Start the application immediately when the script is parsed
-        initializeFirebase(); 
-        renderModeSelection(); // This is the crucial line for rendering the initial UI!
+        // 2. Start the application ONLY when the entire DOM is loaded.
+        // This prevents the common issue of a script running before the target element (#content-area) is fully parsed.
+        window.onload = function() {
+            initializeFirebase(); 
+            renderModeSelection(); 
+        }
 
     </script>
 </body>
