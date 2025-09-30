@@ -77,7 +77,7 @@
 
     </div>
 
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK and Application Logic -->
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -86,26 +86,40 @@
 
         // --- FIREBASE AND APP CONFIGURATION ---
         let db, auth;
+        let userId = 'anon-user'; // Default placeholder
         
         // These global variables are provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
-        try {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('debug');
+        async function initializeFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('debug');
 
-            // Sign in the user
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+                // Sign in the user
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Authenticated with UID:", userId);
+                    } else {
+                        userId = crypto.randomUUID(); // Fallback for unauthenticated
+                        console.log("Signed in anonymously. Using generated ID:", userId);
+                    }
+                });
+
+            } catch (e) {
+                console.error("Firebase initialization failed:", e);
+                showMessage('Error', 'Could not connect to the database. Proceeding without submission functionality.', 'continue');
             }
-        } catch (e) {
-            console.error("Firebase initialization failed:", e);
-            showMessage('Error', 'Could not connect to the database. Please refresh and try again.', 'refresh');
         }
         
         // --- APPLICATION CONSTANTS ---
@@ -158,6 +172,11 @@
             email: '',
             phone: '',
             address: '',
+            customization: {
+                dimension: null,
+                photoFileName: null,
+                price: 0
+            },
             calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
             timestamp: new Date().toISOString()
         };
@@ -179,6 +198,7 @@
             });
 
             let discount = 0;
+            // The Faction Promo: 10% off the highest costing product if product count >= 3
             if (productCount >= 3) {
                 discount = highestProductPrice * 0.10;
             }
@@ -263,12 +283,18 @@
             }
             orderData.items.splice(index, 1);
             calculateOrder();
+            clearSelectionAreaPrompt();
         }
-        
+
         function clearSelectionAreaPrompt() {
             const selectionArea = document.getElementById('selection-area');
             if (selectionArea) {
-                selectionArea.innerHTML = '<p class="text-center text-gray-500 pt-10">Select an option above to add more items, or proceed to add-ons when ready.</p>';
+                // If there are no items, show the main prompt again
+                if (orderData.items.length === 0) {
+                     selectionArea.innerHTML = '<p class="text-center text-gray-500 pt-10">Select an option above to begin configuring your item.</p>';
+                } else {
+                     selectionArea.innerHTML = '<p class="text-center text-gray-500 pt-10">Select an option above to add more items, or proceed to add-ons when ready.</p>';
+                }
             }
         }
         
@@ -291,7 +317,7 @@
                                 <p class="text-xl font-bold text-gray-800">2D Pre-set</p>
                                 <p class="text-sm text-gray-500">₱${BASE_PRICES['2D'].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                             </button>
-                            <button onclick="window.app.selectMode('custom', '3D')" class="p-6 bg-purple-50 border-2 border-purple-200 rounded-xl hover:bg-purple-100 transition-all shadow-md flex-1 min-w-[150px]">
+                            <button onclick="window.app.selectMode('custom', 'any')" class="p-6 bg-purple-50 border-2 border-purple-200 rounded-xl hover:bg-purple-100 transition-all shadow-md flex-1 min-w-[150px]">
                                 <p class="text-3xl mb-1">✨</p>
                                 <p class="text-xl font-bold text-gray-800">Custom Order</p>
                                 <p class="text-sm text-gray-500">Choose 2D/3D</p>
@@ -311,6 +337,7 @@
             `;
             currentStep = 'mode_selection';
             updateSummaryDisplay();
+            clearSelectionAreaPrompt(); // Initial prompt or proceed prompt
         }
 
         function renderPresetSelection(dimension) {
@@ -327,7 +354,7 @@
                             <div id="design-${design.id}" onclick="window.app.selectDesign('${design.id}', '${dimension}')"
                                 class="design-card cursor-pointer p-2 rounded-lg bg-white shadow-sm text-center transform hover:shadow-lg flex flex-col justify-between">
                                 <!-- IMAGE: Replaced the emoji with an <img> tag -->
-                                <img src="${design.imageUrl}" alt="${design.name}" class="w-full h-24 object-cover rounded-md mb-2">
+                                <img src="${design.imageUrl}" alt="${design.name}" class="w-full h-24 object-cover rounded-md mb-2" onerror="this.onerror=null; this.src='https://placehold.co/200x200/CCCCCC/666666?text=Image+Error';">
                                 <div>
                                     <p class="text-xs font-semibold text-gray-700">${design.name}</p>
                                     <p class="text-xxs text-gray-400">ID: ${design.id}</p>
@@ -352,6 +379,8 @@
                 const designCard = document.getElementById(`design-${tempId}`);
                 if (designCard) designCard.classList.add('selected');
                 document.getElementById('add-to-order-btn').disabled = false;
+            } else {
+                 document.getElementById('add-to-order-btn').disabled = true;
             }
         }
         
@@ -377,6 +406,8 @@
                         <p class="font-bold text-yellow-800 mb-1">Custom Upload Guidelines (Mandatory):</p>
                         <ul class="list-disc list-inside text-sm text-yellow-700 space-y-1">
                            <li>*Note: Only the file name will be recorded for follow-up; the file itself is NOT uploaded.*</li>
+                           <li>Please select a dimension above and then select your file.</li>
+                           <li id="custom-price-display" class="font-bold">Price: ₱0.00</li>
                         </ul>
                     </div>
                     <div class="mb-4">
@@ -398,6 +429,12 @@
                     </div>
                 </div>
             `;
+            // Ensure state matches initial radio buttons
+            if (orderData.customization.dimension) {
+                document.querySelector(`input[value="${orderData.customization.dimension}"]`).checked = true;
+                updateCustomPriceDisplay();
+            }
+             updateCustomButtonState();
         }
         
         function renderAddOnsSelection() {
@@ -504,169 +541,52 @@
                                 </ul>
                             </div>
                         ` : ''}
-                        <div class="pt-4 border-t border-blue-200 space-y-2 text-base">
-                             <div class="flex justify-between font-medium text-gray-700">
-                                 <span>Subtotal:</span>
-                                 <span>₱${orderData.calculations.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                             </div>
-                             <div class="flex justify-between font-medium text-gray-700">
-                                 <span>Add-ons Total:</span>
-                                 <span>₱${orderData.calculations.addOnTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                             </div>
-                             <div class="flex justify-between font-medium text-green-600">
-                                 <span>Discount:</span>
-                                 <span>-₱${orderData.calculations.discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                             </div>
-                             <div class="flex justify-between text-2xl font-extrabold mt-4 pt-4 border-t-2 border-blue-500 text-gray-900">
-                                 <span>Final Total:</span>
-                                 <span>₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                             </div>
+                        
+                        <div class="pt-4 border-t border-blue-200 font-bold text-lg flex justify-between">
+                            <span>Final Total:</span>
+                            <span class="text-blue-600">₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                     </div>
-                    <div class="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                         <p class="text-lg font-bold text-gray-800 border-b pb-2 border-gray-200">Shipping Details:</p>
-                         <div class="text-gray-700 space-y-2 mt-2">
-                             <p><strong>Name:</strong> ${orderData.name}</p>
-                             <p><strong>Email:</strong> ${orderData.email}</p>
-                             <p><strong>Phone:</strong> ${orderData.phone}</p>
-                             <p><strong>Address:</strong> ${orderData.address.replace(/\n/g, '<br>')}</p>
-                         </div>
+
+                    <div class="bg-gray-50 p-6 rounded-xl space-y-4 mb-8 border border-gray-200">
+                        <p class="text-lg font-bold text-gray-800 border-b pb-2 border-gray-300">Contact & Shipping Details:</p>
+                        <div class="text-sm space-y-2">
+                            <p><strong>Name:</strong> ${orderData.name}</p>
+                            <p><strong>Email:</strong> ${orderData.email}</p>
+                            <p><strong>Phone:</strong> ${orderData.phone}</p>
+                            <p><strong>Address:</strong> ${orderData.address.replace(/\n/g, '<br>')}</p>
+                        </div>
                     </div>
-                    <div class="mt-8 flex flex-col sm:flex-row gap-4">
-                        <button onclick="window.app.goBack()" class="btn-secondary px-6 py-3 rounded-lg font-semibold w-full bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors">← Make Changes</button>
-                        <button id="final-submit-btn" onclick="window.app.handleFinalSubmit()" class="btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg">
-                            Confirm & Submit Pre-Order
-                        </button>
-                    </div>
+
+                    <button onclick="window.app.submitOrder()" class="btn-primary px-6 py-4 rounded-lg font-bold w-full text-xl shadow-lg hover:shadow-xl">
+                        Submit Pre-Order and Lock In Price!
+                    </button>
+                    <button onclick="window.app.goBack()" class="mt-4 text-gray-500 hover:text-gray-800 transition-colors block text-center mx-auto">← Back to Edit Details</button>
                 </div>
             `;
             currentStep = 'confirmation';
         }
         
-        // --- EVENT HANDLERS & NAVIGATION ---
+        // --- HANDLER FUNCTIONS ---
         
-        function selectMode(type, dimension) {
-            if (type === 'preset') {
-                renderPresetSelection(dimension);
-            } else {
-                renderCustomization();
-            }
-        }
-        
-        function selectDesign(designId, dimension) {
-            document.querySelectorAll('.design-card').forEach(card => card.classList.remove('selected'));
-            document.getElementById(`design-${designId}`).classList.add('selected');
-            document.getElementById('selected-design-id').value = designId;
-            document.getElementById('add-to-order-btn').disabled = false;
-        }
-
-        function validateQuantity(input) {
-            if (parseInt(input.value) < 1 || !input.value) {
-                input.value = 1;
-            }
-        }
-
-        function addToOrder(type) {
-            let newItem = {};
-            if (type === 'preset') {
-                const designId = document.getElementById('selected-design-id').value;
-                const dimension = PRESETS['3D'].some(d => d.id === designId) ? '3D' : '2D';
-                const design = PRESETS[dimension].find(d => d.id === designId);
-                const quantity = parseInt(document.getElementById('quantity-input').value) || 1;
-                newItem = {
-                    type: 'Preset',
-                    dimension: dimension,
-                    name: design.name,
-                    price: BASE_PRICES[dimension],
-                    quantity: quantity
-                };
-            } else { // custom
-                const dimensionRadio = document.querySelector('input[name="customDimension"]:checked');
-                const fileInput = document.getElementById('customPhoto');
-                if (!dimensionRadio || !fileInput.files[0]) {
-                     return showMessage('Missing Info', 'Please select a dimension and upload a reference file for your custom order.', 'continue');
-                }
-                const dimension = dimensionRadio.value;
-                const quantity = parseInt(document.getElementById('quantity-input-custom').value) || 1;
-                newItem = {
-                    type: 'Custom',
-                    dimension: dimension,
-                    name: `Custom Ref: ${fileInput.files[0].name}`,
-                    price: BASE_PRICES[dimension],
-                    quantity: quantity
-                };
-            }
-            orderData.items.push(newItem);
-            calculateOrder();
-            clearSelectionAreaPrompt();
-        }
-
-        function updateCustomization(radio) {
-             const addButton = document.getElementById('add-to-order-btn-custom');
-             const fileInput = document.getElementById('customPhoto');
-             addButton.disabled = !(radio && fileInput.files.length > 0);
-        }
-
-        function handleCustomFileUpload(files) {
-            const fileStatus = document.getElementById('file-status');
-            const addButton = document.getElementById('add-to-order-btn-custom');
-            const dimensionRadio = document.querySelector('input[name="customDimension"]:checked');
-
-            if (files.length > 0) {
-                fileStatus.textContent = `File selected: ${files[0].name}`;
-                fileStatus.classList.remove('text-gray-500');
-                fileStatus.classList.add('text-green-600', 'font-semibold');
-                addButton.disabled = !dimensionRadio;
-            } else {
-                fileStatus.textContent = 'No file selected.';
-                fileStatus.classList.add('text-gray-500');
-                fileStatus.classList.remove('text-green-600', 'font-semibold');
-                addButton.disabled = true;
-            }
-        }
-        
-        function updateAddOns(id, isChecked) {
-            const addon = ADD_ONS.find(a => a.id === id);
-            if (isChecked) {
-                orderData.addOns[id] = addon.price;
-            } else {
-                delete orderData.addOns[id];
-            }
-            calculateOrder();
-        }
-        
-        function selectStep(step) {
-            if (step === 'addons' && orderData.items.length === 0) {
-                 return showMessage('Empty Order', 'You must add at least one product to your order before proceeding.', 'continue');
-            }
-            const stepRenderers = {
-                'mode_selection': renderModeSelection,
-                'addons': renderAddOnsSelection,
-                'details': renderDetailsForm,
-                'confirmation': renderConfirmation
-            };
-            stepRenderers[step]();
-        }
-
-        function goBack() {
-            const stepMap = {
-                'addons': 'mode_selection',
-                'details': 'addons',
-                'confirmation': 'details'
-            };
-            const prevStep = stepMap[currentStep];
-            if (prevStep) selectStep(prevStep);
-        }
-
         function updateNextButtonState() {
-            const nextButton = document.getElementById('next-to-addons');
-            if (nextButton) {
-                nextButton.disabled = orderData.items.length === 0;
-            }
+             const nextButton = document.getElementById('next-to-addons');
+             if (nextButton) {
+                 nextButton.disabled = orderData.items.length === 0;
+             }
         }
-
-        function handleDetailsSubmit(e) {
-            e.preventDefault();
+        
+        function updateCustomButtonState() {
+             const customBtn = document.getElementById('add-to-order-btn-custom');
+             if (customBtn) {
+                 const quantity = parseInt(document.getElementById('quantity-input-custom').value);
+                 const isValid = orderData.customization.dimension && orderData.customization.photoFileName && quantity > 0;
+                 customBtn.disabled = !isValid;
+             }
+        }
+        
+        function handleDetailsSubmit(event) {
+            event.preventDefault();
             orderData.name = document.getElementById('name').value;
             orderData.email = document.getElementById('email').value;
             orderData.phone = document.getElementById('phone').value;
@@ -674,83 +594,262 @@
             selectStep('confirmation');
         }
 
-        async function handleFinalSubmit() {
-            const submitBtn = document.getElementById('final-submit-btn');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Submitting...';
+        function selectMode(type, dimension) {
+            if (type === 'preset') {
+                renderPresetSelection(dimension);
+            } else if (type === 'custom') {
+                renderCustomization();
+            }
+        }
+        
+        function selectDesign(id, dimension) {
+            const currentSelection = document.getElementById('selected-design-id');
+            const newSelection = document.getElementById(`design-${id}`);
 
-            // Update timestamp to final submission time
-            orderData.timestamp = new Date().toISOString();
+            // Deselect old
+            if (currentSelection.value) {
+                document.getElementById(`design-${currentSelection.value}`).classList.remove('selected');
+            }
 
+            // Select new
+            newSelection.classList.add('selected');
+            currentSelection.value = id;
+            
+            // Enable button
+            document.getElementById('add-to-order-btn').disabled = false;
+        }
+        
+        function validateQuantity(input) {
+            let value = parseInt(input.value);
+            if (isNaN(value) || value < 1) {
+                input.value = 1;
+            }
+            if (currentStep === 'mode_selection' && document.getElementById('add-to-order-btn-custom')) {
+                 updateCustomButtonState(); // Re-validate custom button state
+            }
+        }
+
+        function updateCustomPriceDisplay() {
+            const priceEl = document.getElementById('custom-price-display');
+            if (priceEl) {
+                priceEl.textContent = `Price: ₱${orderData.customization.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+        }
+
+        function updateCustomization(radio) {
+            orderData.customization.dimension = radio.value;
+            orderData.customization.price = parseFloat(radio.getAttribute('price'));
+            updateCustomPriceDisplay();
+            updateCustomButtonState();
+        }
+
+        function handleCustomFileUpload(files) {
+            const fileStatus = document.getElementById('file-status');
+            if (files.length > 0) {
+                orderData.customization.photoFileName = files[0].name;
+                fileStatus.textContent = `File selected: ${files[0].name}`;
+            } else {
+                orderData.customization.photoFileName = null;
+                fileStatus.textContent = 'No file selected.';
+            }
+            updateCustomButtonState();
+        }
+        
+        function updateAddOns(id, isChecked) {
+            if (isChecked) {
+                orderData.addOns[id] = true;
+            } else {
+                delete orderData.addOns[id];
+            }
+            calculateOrder();
+        }
+
+        function addToOrder(type) {
+            let newItem = {};
+            let quantity = 1;
+            
+            if (type === 'preset') {
+                const designId = document.getElementById('selected-design-id').value;
+                quantity = parseInt(document.getElementById('quantity-input').value);
+                
+                if (!designId || quantity < 1) {
+                    return showMessage('Missing Selection', 'Please select a design and set a valid quantity.', 'continue');
+                }
+                
+                const dimension = designId.startsWith('3d') ? '3D' : '2D';
+                const presetList = PRESETS[dimension];
+                const design = presetList.find(d => d.id === designId);
+                
+                newItem = {
+                    id: designId,
+                    name: design.name,
+                    dimension: dimension,
+                    type: 'Preset',
+                    price: BASE_PRICES[dimension],
+                    quantity: quantity
+                };
+
+            } else if (type === 'custom') {
+                quantity = parseInt(document.getElementById('quantity-input-custom').value);
+
+                if (!orderData.customization.dimension || !orderData.customization.photoFileName || quantity < 1) {
+                    return showMessage('Missing Custom Details', 'Please select a dimension, upload a reference photo, and set a valid quantity.', 'continue');
+                }
+                
+                newItem = {
+                    id: crypto.randomUUID(), // Unique ID for custom
+                    name: `Custom Order (${orderData.customization.photoFileName})`,
+                    dimension: orderData.customization.dimension,
+                    type: 'Custom',
+                    price: orderData.customization.price,
+                    quantity: quantity
+                };
+                
+                // Reset custom state after successful add
+                orderData.customization = { dimension: null, photoFileName: null, price: 0 };
+            }
+            
+            orderData.items.push(newItem);
+            calculateOrder();
+            clearSelectionAreaPrompt();
+            
+            // Re-render to clear selection controls
+            if (type === 'preset') {
+                renderPresetSelection(newItem.dimension);
+            } else {
+                renderCustomization();
+            }
+            
+            showMessage('Item Added!', `${quantity}x ${newItem.name} added to your order.`, 'continue');
+        }
+        
+        async function submitOrder() {
+            if (!db) {
+                return showMessage('Database Offline', 'Cannot submit order. Database connection failed. Please contact support.', 'continue');
+            }
+            
             try {
-                if (!db) throw new Error("Database not initialized.");
+                // Ensure the final calculations are correct
+                calculateOrder();
                 
-                // Get the user ID for associating the order
-                const userId = auth.currentUser?.uid || 'anonymous';
-                
-                // Construct the complete order object to be saved
-                const finalOrderData = {
+                const orderToSave = {
                     ...orderData,
                     userId: userId,
-                    status: 'new' // Add an initial status for the order
+                    timestamp: new Date().toISOString()
                 };
-                
-                // The collection path where orders will be stored.
-                const ordersCollectionPath = `/artifacts/${appId}/public/data/orders`;
 
-                // Add a new document with a generated ID to the 'orders' collection.
-                const docRef = await addDoc(collection(db, ordersCollectionPath), finalOrderData);
+                const collectionPath = `artifacts/${appId}/public/data/orders`;
                 
-                console.log("Order saved with ID: ", docRef.id);
-                showMessage('Success!', 'Your pre-order has been submitted. We will contact you shortly with payment details. Thank you!', 'start_over');
+                await addDoc(collection(db, collectionPath), orderToSave);
 
+                showMessage(
+                    'Order Submitted!',
+                    `Your pre-order for ₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been submitted successfully. We will contact you soon!`,
+                    'Start New Order'
+                );
+                
+                // Reset for new order
+                orderData = { items: [], addOns: {}, name: '', email: '', phone: '', address: '', customization: { dimension: null, photoFileName: null, price: 0 }, calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 }, timestamp: new Date().toISOString() };
+                document.getElementById('message-button').onclick = () => { hideMessage(); selectStep('mode_selection'); };
+                
             } catch (error) {
-                console.error("Error submitting order to Firestore: ", error);
-                showMessage('Submission Failed', 'There was an error submitting your order. Please check your connection and try again.', 'continue');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Confirm & Submit Pre-Order';
+                console.error("Error submitting order:", error);
+                showMessage('Submission Failed', `There was an error saving your order. Please try again. Error: ${error.message}`, 'continue');
             }
         }
 
-        function showMessage(title, text, buttonType) {
+        // --- NAVIGATION AND UI HELPERS ---
+
+        function showMessage(title, text, buttonText) {
             document.getElementById('message-title').textContent = title;
             document.getElementById('message-text').textContent = text;
-            const button = document.getElementById('message-button');
-
-            if (buttonType === 'start_over') {
-                button.textContent = 'Start New Order';
-                button.onclick = () => {
-                    location.reload(); // Simple way to reset everything
-                };
-            } else if (buttonType === 'refresh') {
-                 button.textContent = 'Refresh Page';
-                 button.onclick = () => location.reload();
-            } else { // 'continue'
-                button.textContent = 'Close';
-                button.onclick = () => {
-                    MESSAGE_BOX.classList.add('hidden');
-                    MESSAGE_BOX.classList.remove('flex');
-                };
-            }
-
+            document.getElementById('message-button').textContent = buttonText;
             MESSAGE_BOX.classList.remove('hidden');
             MESSAGE_BOX.classList.add('flex');
+
+            if (buttonText === 'continue') {
+                 document.getElementById('message-button').onclick = hideMessage;
+            } else if (buttonText === 'refresh') {
+                 document.getElementById('message-button').onclick = () => window.location.reload();
+            }
+             // For "Start New Order" case, the handler is set in submitOrder()
         }
 
-        // --- INITIALIZATION ---
-        // Expose functions to the global scope so inline onclick handlers can access them
-        window.app = {
-            selectMode, selectDesign, validateQuantity, addToOrder, updateCustomization,
-            handleCustomFileUpload, updateAddOns, selectStep, goBack, removeItem,
-            handleDetailsSubmit, handleFinalSubmit
+        function hideMessage() {
+            MESSAGE_BOX.classList.add('hidden');
+            MESSAGE_BOX.classList.remove('flex');
+        }
+        
+        function selectStep(step) {
+            // Save contact details if moving from details to confirmation
+            if (currentStep === 'details') {
+                const form = document.getElementById('details-form');
+                if (form && !form.checkValidity()) {
+                     form.reportValidity();
+                     return;
+                }
+            }
+
+            switch (step) {
+                case 'mode_selection':
+                    renderModeSelection();
+                    break;
+                case 'addons':
+                    if (orderData.items.length === 0) {
+                        showMessage('No Items Selected', 'Please add at least one product before proceeding to add-ons.', 'continue');
+                        return;
+                    }
+                    renderAddOnsSelection();
+                    break;
+                case 'details':
+                    renderDetailsForm();
+                    break;
+                case 'confirmation':
+                    renderConfirmation();
+                    break;
+            }
+        }
+        
+        function goBack() {
+             switch (currentStep) {
+                case 'addons':
+                    selectStep('mode_selection');
+                    break;
+                case 'details':
+                    selectStep('addons');
+                    break;
+                case 'confirmation':
+                    selectStep('details');
+                    break;
+            }
+        }
+
+        // --- APP INITIALIZATION ---
+
+        const app = {
+            init: () => {
+                initializeFirebase();
+                renderModeSelection(); // This is what starts the UI flow
+            },
+            selectStep: selectStep,
+            selectMode: selectMode,
+            selectDesign: selectDesign,
+            updateCustomization: updateCustomization,
+            handleCustomFileUpload: handleCustomFileUpload,
+            validateQuantity: validateQuantity,
+            updateAddOns: updateAddOns,
+            addToOrder: addToOrder,
+            removeItem: removeItem,
+            goBack: goBack,
+            submitOrder: submitOrder
         };
         
-        // Initial render
-        renderModeSelection();
+        // Export the app object globally so HTML onclick handlers can access it
+        window.app = app;
 
+        // Start the application when the window finishes loading
+        window.onload = app.init;
+        
     </script>
-
 </body>
 </html>
-
