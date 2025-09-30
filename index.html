@@ -44,11 +44,19 @@
             position: sticky;
             top: 2rem;
         }
+        /* Dashboard styles */
+        .dashboard-table-header {
+            background-color: #eef2ff; /* Light blue background for header */
+            color: #374151; /* Darker text */
+        }
+        .dashboard-table-row:nth-child(even) {
+            background-color: #f9fafb; /* Lighter background for striped effect */
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 sm:p-8 flex items-start justify-center">
 
-    <div id="app" class="w-full max-w-5xl bg-white rounded-xl container-card p-6 md:p-10 my-8">
+    <div id="app" class="w-full max-w-6xl bg-white rounded-xl container-card p-6 md:p-10 my-8">
 
         <!-- Header -->
         <header class="text-center mb-10">
@@ -58,13 +66,22 @@
             <h2 class="text-xl font-medium text-blue-600 mt-1">
                 A Product by Team A.N.G. A. Co.
             </h2>
-            <p class="text-gray-500 mt-2">Design your world, 2D or 3D.</p>
+            <div class="mt-4 flex justify-center space-x-4">
+                <button id="nav-order-builder" onclick="window.app.selectStep('mode_selection')" class="text-lg font-semibold px-4 py-2 rounded-lg transition-colors bg-blue-100 text-blue-800 hover:bg-blue-200">
+                    🛍️ Order Builder
+                </button>
+                <button id="nav-manager-dashboard" onclick="window.app.renderOrderDashboard()" class="text-lg font-semibold px-4 py-2 rounded-lg transition-colors text-gray-600 hover:bg-gray-100">
+                    📊 Manager Dashboard
+                </button>
+            </div>
         </header>
 
         <!-- Dynamic Content Area -->
         <div id="content-area">
             <!-- Content will be injected here by JavaScript -->
         </div>
+        
+        <p id="auth-info" class="text-xs text-center text-gray-400 mt-8">Authentication Status...</p>
 
         <!-- Submission Status/Modal -->
         <div id="message-box" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
@@ -82,15 +99,19 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setLogLevel, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- FIREBASE AND APP CONFIGURATION ---
-        let db, auth;
+        let db = null;
+        let auth = null;
         let userId = 'anon-user'; // Default placeholder
-        
-        // These global variables are provided by the environment.
+        let isDbReady = false; // Flag to check if DB is initialized
+
+        // Global variables provided by the environment.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buobuo-ka-orders';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const authInfoEl = document.getElementById('auth-info');
+
 
         async function initializeFirebase() {
             try {
@@ -98,6 +119,7 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 setLogLevel('debug');
+                isDbReady = true;
 
                 // Sign in the user
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -109,16 +131,19 @@
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
-                        console.log("Authenticated with UID:", userId);
+                        authInfoEl.innerHTML = `<p class="text-green-600">✅ Authenticated. User ID: <strong>${userId}</strong></p>`;
                     } else {
                         userId = crypto.randomUUID(); // Fallback for unauthenticated
-                        console.log("Signed in anonymously. Using generated ID:", userId);
+                        authInfoEl.innerHTML = `<p class="text-yellow-600">⚠️ Anonymous sign-in. Generated ID: <strong>${userId}</strong></p>`;
                     }
                 });
 
             } catch (e) {
+                isDbReady = false;
                 console.error("Firebase initialization failed:", e);
-                showMessage('Error', 'Could not connect to the database. Proceeding without submission functionality.', 'continue');
+                authInfoEl.innerHTML = `<p class="text-red-600">❌ Database Offline: Firebase failed to initialize.</p>`;
+                // Only show a non-critical message box if the failure is total.
+                showMessage('Database Offline', 'Cannot submit orders. Please check your connection or contact support.', 'continue');
             }
         }
         
@@ -179,6 +204,21 @@
             calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
             timestamp: new Date().toISOString()
         };
+        
+        // --- UTILITY FUNCTIONS ---
+        function formatCurrency(amount) {
+            return `₱${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+        
+        function formatDate(isoString) {
+             try {
+                const date = new Date(isoString);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric' });
+            } catch (e) {
+                return 'N/A';
+            }
+        }
+
 
         // --- CORE FUNCTIONS ---
 
@@ -235,7 +275,7 @@
                              <p class="text-xs text-gray-500 truncate">${item.name}</p>
                         </div>
                         <div class="flex-shrink-0 flex items-center space-x-2">
-                            <span class="font-medium text-gray-700">₱${(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span class="font-medium text-gray-700">${formatCurrency(item.price * item.quantity)}</span>
                             <button onclick="window.app.removeItem(${index})" class="text-red-400 hover:text-red-600 text-lg p-1 transition-colors" title="Remove Item">&times;</button>
                         </div>
                     </div>
@@ -245,7 +285,7 @@
                 ADD_ONS.filter(addon => orderData.addOns[addon.id]).map(addon => `
                     <div class="flex justify-between text-xs text-gray-600">
                         <span class="ml-2">${addon.name}</span>
-                        <span>₱${addon.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span>${formatCurrency(addon.price)}</span>
                     </div>
                 `).join('');
 
@@ -261,13 +301,13 @@
                          <div class="pl-2 space-y-1">${addOnsList}</div>
                     </div>
                     <div class="text-sm font-medium space-y-1 border-t pt-3 border-gray-200">
-                        <div class="flex justify-between"><span>Subtotal (Products):</span> <span>₱${orderData.calculations.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                        <div class="flex justify-between"><span>Add-ons Total:</span> <span>₱${orderData.calculations.addOnTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                        <div class="flex justify-between"><span>Subtotal (Products):</span> <span>${formatCurrency(orderData.calculations.subtotal)}</span></div>
+                        <div class="flex justify-between"><span>Add-ons Total:</span> <span>${formatCurrency(orderData.calculations.addOnTotal)}</span></div>
                         <div class="flex justify-between"><span>Discount:</span> ${discountText}</div>
                     </div>
                     <div class="flex justify-between text-xl font-extrabold mt-3 pt-3 border-t-2 border-blue-500">
                         <span>Total:</span>
-                        <span>₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span>${formatCurrency(orderData.calculations.finalTotal)}</span>
                     </div>
                     ${productCount >= 3 ? `<p class="text-center text-xs mt-2 text-green-700 bg-green-100 p-1 rounded-md">✅ Faction Promo Applied!</p>` : ''}
                 </div>
@@ -298,7 +338,20 @@
         
         // --- STEP RENDERING FUNCTIONS ---
 
+        function updateNavStyles(activeId) {
+            document.getElementById('nav-order-builder').classList.remove('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
+            document.getElementById('nav-order-builder').classList.add('text-gray-600', 'hover:bg-gray-100');
+            document.getElementById('nav-manager-dashboard').classList.remove('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
+            document.getElementById('nav-manager-dashboard').classList.add('text-gray-600', 'hover:bg-gray-100');
+
+            if (document.getElementById(activeId)) {
+                document.getElementById(activeId).classList.add('bg-blue-100', 'text-blue-800', 'hover:bg-blue-200');
+                document.getElementById(activeId).classList.remove('text-gray-600', 'hover:bg-gray-100');
+            }
+        }
+
         function renderModeSelection() {
+            updateNavStyles('nav-order-builder');
             calculateOrder();
             APP_CONTAINER.innerHTML = `
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -308,12 +361,12 @@
                             <button onclick="window.app.selectMode('preset', '3D')" class="p-6 bg-yellow-50 border-2 border-yellow-200 rounded-xl hover:bg-yellow-100 transition-all shadow-md flex-1 min-w-[150px]">
                                 <p class="text-3xl mb-1">🧊</p>
                                 <p class="text-xl font-bold text-gray-800">3D Pre-set</p>
-                                <p class="text-sm text-gray-500">₱${BASE_PRICES['3D'].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <p class="text-sm text-gray-500">${formatCurrency(BASE_PRICES['3D'])}</p>
                             </button>
                             <button onclick="window.app.selectMode('preset', '2D')" class="p-6 bg-red-50 border-2 border-red-200 rounded-xl hover:bg-red-100 transition-all shadow-md flex-1 min-w-[150px]">
                                 <p class="text-3xl mb-1">🖼️</p>
                                 <p class="text-xl font-bold text-gray-800">2D Pre-set</p>
-                                <p class="text-sm text-gray-500">₱${BASE_PRICES['2D'].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <p class="text-sm text-gray-500">${formatCurrency(BASE_PRICES['2D'])}</p>
                             </button>
                             <button onclick="window.app.selectMode('custom', 'any')" class="p-6 bg-purple-50 border-2 border-purple-200 rounded-xl hover:bg-purple-100 transition-all shadow-md flex-1 min-w-[150px]">
                                 <p class="text-3xl mb-1">✨</p>
@@ -345,7 +398,7 @@
 
             selectionArea.innerHTML = `
                 <div class="bg-gray-100 p-6 rounded-lg">
-                    <h4 class="text-xl font-bold mb-4 text-gray-800">${dimension} Pre-set Designs (₱${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</h4>
+                    <h4 class="text-xl font-bold mb-4 text-gray-800">${dimension} Pre-set Designs (${formatCurrency(price)})</h4>
                     <input type="hidden" id="selected-design-id">
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
                         ${designs.map(design => `
@@ -393,11 +446,11 @@
                         <div class="flex gap-4">
                             <label class="flex items-center p-3 bg-white border border-gray-300 rounded-lg cursor-pointer flex-1 hover:bg-gray-50 transition-colors">
                                 <input type="radio" name="customDimension" value="3D" price="${BASE_PRICES['3D']}" class="form-radio text-blue-600 h-4 w-4" onchange="window.app.updateCustomization(this)">
-                                <span class="ml-2 text-gray-700 font-medium">3D Model (₱${BASE_PRICES['3D'].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                                <span class="ml-2 text-gray-700 font-medium">3D Model (${formatCurrency(BASE_PRICES['3D'])})</span>
                             </label>
                             <label class="flex items-center p-3 bg-white border border-gray-300 rounded-lg cursor-pointer flex-1 hover:bg-gray-50 transition-colors">
                                 <input type="radio" name="customDimension" value="2D" price="${BASE_PRICES['2D']}" class="form-radio text-blue-600 h-4 w-4" onchange="window.app.updateCustomization(this)">
-                                <span class="ml-2 text-gray-700 font-medium">2D Print/Art (₱${BASE_PRICES['2D'].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                                <span class="ml-2 text-gray-700 font-medium">2D Print/Art (${formatCurrency(BASE_PRICES['2D'])})</span>
                             </label>
                         </div>
                     </div>
@@ -406,7 +459,7 @@
                         <ul class="list-disc list-inside text-sm text-yellow-700 space-y-1">
                            <li>*Note: Only the file name will be recorded for follow-up; the file itself is NOT uploaded.*</li>
                            <li>Please select a dimension above and then select your file.</li>
-                           <li id="custom-price-display" class="font-bold">Price: ₱0.00</li>
+                           <li id="custom-price-display" class="font-bold">Price: ${formatCurrency(0)}</li>
                         </ul>
                     </div>
                     <div class="mb-4">
@@ -459,7 +512,7 @@
                                             <p class="text-xs text-gray-500">${addon.description}</p>
                                         </div>
                                     </div>
-                                    <span class="text-base font-bold text-gray-700">₱${addon.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span class="text-base font-bold text-gray-700">${formatCurrency(addon.price)}</span>
                                 </label>
                             `).join('')}
                         </div>
@@ -521,7 +574,7 @@
                                 ${orderData.items.map(item => `
                                     <li class="flex justify-between">
                                         <span>${item.quantity}x ${item.name} (${item.dimension} ${item.type})</span>
-                                        <span>₱${(item.price * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span>${formatCurrency(item.price * item.quantity)}</span>
                                     </li>
                                 `).join('')}
                             </ul>
@@ -533,7 +586,7 @@
                                     ${ADD_ONS.filter(a => orderData.addOns[a.id]).map(a => `
                                         <li class="flex justify-between">
                                             <span>${a.name}</span>
-                                            <span>₱${a.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            <span>${formatCurrency(a.price)}</span>
                                         </li>
                                     `).join('')}
                                 </ul>
@@ -542,7 +595,7 @@
                         
                         <div class="pt-4 border-t border-blue-200 font-bold text-lg flex justify-between">
                             <span>Final Total:</span>
-                            <span class="text-blue-600">₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span class="text-blue-600">${formatCurrency(orderData.calculations.finalTotal)}</span>
                         </div>
                     </div>
 
@@ -565,6 +618,88 @@
             currentStep = 'confirmation';
         }
         
+        // --- MANAGER DASHBOARD FUNCTIONS ---
+        
+        function renderOrderDashboard() {
+            updateNavStyles('nav-manager-dashboard');
+            currentStep = 'dashboard';
+            APP_CONTAINER.innerHTML = `
+                <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Real-Time Order Dashboard (Manager View)</h3>
+                <p class="text-sm text-center text-gray-500 mb-4">Orders are saved to: <code>artifacts/${appId}/public/data/orders</code></p>
+                <div id="dashboard-content" class="bg-white rounded-xl shadow-inner p-4 overflow-x-auto min-h-[300px]">
+                    <div class="text-center py-10 text-gray-500" id="loading-indicator">Loading orders...</div>
+                </div>
+            `;
+            
+            if (isDbReady) {
+                listenForOrders();
+            } else {
+                 document.getElementById('loading-indicator').textContent = 'Cannot connect to database to load orders.';
+            }
+        }
+        
+        function listenForOrders() {
+            const collectionPath = `artifacts/${appId}/public/data/orders`;
+            const q = query(collection(db, collectionPath));
+            
+            // Set up real-time listener
+            onSnapshot(q, (snapshot) => {
+                const orders = [];
+                snapshot.forEach((doc) => {
+                    orders.push({ id: doc.id, ...doc.data() });
+                });
+                displayOrders(orders);
+            }, (error) => {
+                 console.error("Error fetching real-time orders:", error);
+                 document.getElementById('loading-indicator').textContent = `Error loading orders: ${error.message}`;
+            });
+        }
+        
+        function displayOrders(orders) {
+            const dashboardContent = document.getElementById('dashboard-content');
+            
+            if (orders.length === 0) {
+                 dashboardContent.innerHTML = '<div class="text-center py-10 text-gray-500">No orders have been submitted yet.</div>';
+                 return;
+            }
+            
+            const tableHtml = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="dashboard-table-header">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tl-lg">ID / Name</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Items</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Add-ons</th>
+                            <th class="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider">Total</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tr-lg">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${orders.map(order => `
+                            <tr class="dashboard-table-row">
+                                <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                                    ${order.name}<br><span class="text-xs text-gray-500">${order.id.substring(0, 8)}...</span>
+                                </td>
+                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-700">
+                                    ${order.items.map(item => `${item.quantity}x ${item.dimension} ${item.type}`).join(', ')}
+                                </td>
+                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-700">
+                                    ${Object.keys(order.addOns).length > 0 ? Object.keys(order.addOns).map(id => ADD_ONS.find(a => a.id === id)?.name).join(', ') : 'None'}
+                                </td>
+                                <td class="px-3 py-4 whitespace-nowrap text-sm font-bold text-right text-blue-600">
+                                    ${formatCurrency(order.calculations.finalTotal)}
+                                </td>
+                                <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500">
+                                    ${formatDate(order.timestamp)}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            dashboardContent.innerHTML = tableHtml;
+        }
+
         // --- HANDLER FUNCTIONS ---
         
         function updateNextButtonState() {
@@ -635,7 +770,7 @@
         function updateCustomPriceDisplay() {
             const priceEl = document.getElementById('custom-price-display');
             if (priceEl) {
-                priceEl.textContent = `Price: ₱${orderData.customization.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                priceEl.textContent = `Price: ${formatCurrency(orderData.customization.price)}`;
             }
         }
 
@@ -727,8 +862,8 @@
         }
         
         async function submitOrder() {
-            if (!db) {
-                return showMessage('Database Offline', 'Cannot submit order. Database connection failed. Please contact support.', 'continue');
+            if (!isDbReady || !db) {
+                return showMessage('Database Offline', 'Cannot submit order. Database connection failed. Please try again later.', 'continue');
             }
             
             try {
@@ -740,13 +875,14 @@
                     timestamp: new Date().toISOString()
                 };
 
+                // Saving to public data path for managers to view
                 const collectionPath = `artifacts/${appId}/public/data/orders`;
                 
                 await addDoc(collection(db, collectionPath), orderToSave);
 
                 showMessage(
                     'Order Submitted!',
-                    `Your pre-order for ₱${orderData.calculations.finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been submitted successfully. We will contact you soon!`,
+                    `Your pre-order for ${formatCurrency(orderData.calculations.finalTotal)} has been submitted successfully. We will contact you soon!`,
                     'Start New Order'
                 );
                 
@@ -840,14 +976,15 @@
             addToOrder: addToOrder,
             removeItem: removeItem,
             goBack: goBack,
-            submitOrder: submitOrder
+            submitOrder: submitOrder,
+            renderOrderDashboard: renderOrderDashboard // Exported for the nav button
         };
 
         // 2. Define the main startup function
         function startApp() {
             // Start Firebase initialization in the background
             initializeFirebase(); 
-            // Immediately render the first step to ensure UI loads fast
+            // Immediately render the first step (Order Builder)
             renderModeSelection();
         }
 
