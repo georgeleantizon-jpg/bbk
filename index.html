@@ -1104,18 +1104,18 @@
                     );
                     
                     // Reset for new order
-                    let orderData = {
-                        items: [],
-                        addOns: {},
-                        name: '',
-                        fbLink: '',
-                        gradeSection: '',
-                        email: '',
-                        phone: '',
-                        address: '',
-                        customization: { dimension: null, photoFileName: null, price: 0 },
-                        calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
-                        timestamp: new Date().toISOString()
+                    orderData = {
+                      items: [],
+                      addOns: {},
+                      name: '',
+                      fbLink: '',
+                      gradeSection: '',
+                      email: '',
+                      phone: '',
+                      address: '',
+                      customization: { dimension: null, photoFileName: null, price: 0 },
+                      calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
+                      timestamp: new Date().toISOString()
                     };
 
                     document.getElementById('message-button').onclick = () => { hideMessage(); selectStep('mode_selection'); };
@@ -1174,6 +1174,20 @@
             initializeFirebase(); 
             renderModeSelection(); 
         }
+
+        let orderData = {
+          items: [],
+          addOns: {},
+          name: '',
+          fbLink: '',
+          gradeSection: '',
+          email: '',
+          phone: '',
+          address: '',
+          customization: { dimension: null, photoFileName: null, price: 0 },
+          calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
+          timestamp: new Date().toISOString()
+        };
 
     </script>
 </body>
