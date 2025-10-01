@@ -277,7 +277,7 @@
 
         // --- APPLICATION STATE (Same as before) ---
         let currentStep = 'mode_selection';
-        orderData = { 
+        let orderData = { 
             items: [], 
             addOns: {}, 
             name: '', 
@@ -290,6 +290,7 @@
             calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 }, 
             timestamp: new Date().toISOString() 
         };
+
         
         // --- UTILITY FUNCTIONS (Same as before) ---
         function formatCurrency(amount) {
