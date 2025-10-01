@@ -1133,22 +1133,24 @@
         // --- APP INITIALIZATION AND EXPORT ---
         
         // 1. Expose the API immediately for the HTML onclick attributes
+
         window.app = {
             selectStep: selectStep,
             selectMode: selectMode,
             selectDesign: selectDesign,
             updateCustomization: updateCustomization,
-            handleCustomFileUpload: handleCustomFileUpload,
+            handleCustomLinkInput: handleCustomLinkInput, // ✅ use this instead
             validateQuantity: validateQuantity,
             updateAddOns: updateAddOns,
             addToOrder: addToOrder,
             removeItem: removeItem,
             goBack: goBack,
             submitOrder: submitOrder,
-            renderOrderDashboard: renderOrderDashboard, // Exported for the nav button
-            authenticateDashboard: authenticateDashboard, // Exported for the gate
-            setAuthStatus: setAuthStatus // Exported for internal status management
+            renderOrderDashboard: renderOrderDashboard,
+            authenticateDashboard: authenticateDashboard,
+            setAuthStatus: setAuthStatus
         };
+
 
         // 2. Start the application ONLY when the entire DOM is loaded.
         window.onload = function() {
