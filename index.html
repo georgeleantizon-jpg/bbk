@@ -226,3 +226,40 @@
                 <td class="px-3 py-2">${o.name}</td>
                 <td class="px-3 py-2">${o.gradeSection}</td>
                 <td class="px-3 py-2"><a href="${o.fbLink}" class="text-blue-600" target="_blank">Profile</a></td>
+                <td class="px-3 py-2 text-center">
+                  <input type="checkbox" ${o.delivered ? "checked" : ""} onchange="window.app.toggleDelivered('${o.id}', this.checked)">
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function exportOrdersToCSV() {
+      if (latestOrders.length === 0) return alert("No orders.");
+      const headers = ["Name","Grade & Section","FB Profile","Delivered"];
+      const rows = latestOrders.map(o => [o.name, o.gradeSection, o.fbLink, o.delivered ? "Yes":"No"]);
+      const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download="orders.csv"; a.click();
+    }
+
+    async function toggleDelivered(orderId, delivered) {
+      const ref = doc(db, `artifacts/buobuo-ka-orders/users/${userId}/orders/${orderId}`);
+      await setDoc(ref, { delivered }, { merge: true });
+    }
+
+    // --- NAVIGATION ---
+    function selectStep(step) {
+      if (step==="mode_selection") renderModeSelection();
+      else if (step==="addons") renderAddOnsSelection();
+      else if (step==="details") renderDetailsForm();
+      else if (step==="confirmation") renderConfirmation();
+    }
+
+    window.onload = () => { initializeFirebase(); renderModeSelection(); }
+    window.app = { selectStep, renderModeSelection, renderAddOnsSelection, renderDetailsForm, renderConfirmation, submitOrder, renderOrderDashboard, authenticateDashboard, exportOrdersToCSV, toggleDelivered };
+  </script>
+</body>
+</html>
