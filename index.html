@@ -290,6 +290,7 @@
             calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 }, 
             timestamp: new Date().toISOString() 
         };
+        window.orderData = orderData;
 
         
         // --- UTILITY FUNCTIONS (Same as before) ---
@@ -774,8 +775,8 @@
                                     <div>
                                         <label class="block mb-2 font-semibold">Name</label>
                                         <input type="text" id="name" required
-                                            class="w-full border rounded p-2 mb-4"
-                                            oninput="orderData.name=this.value"
+                                           class="w-full border rounded p-2 mb-4"
+                                           oninput="orderData.name=this.value"
                                             onchange="orderData.name=this.value">
                                     </div>
                                     <div>
@@ -784,6 +785,7 @@
                                            class="w-full border rounded p-2 mb-4"
                                            oninput="orderData.fbLink=this.value"
                                            onchange="orderData.fbLink=this.value">
+
                                    </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1096,6 +1098,9 @@
                     userId: userId, // The user ID of the person who owns this session
                     timestamp: new Date().toISOString()
                 };
+
+                // DEBUG: confirm values before saving
+                console.log("Submitting orderToSave:", orderToSave);
 
                 // *** PRIVATE DATA PATH: Only accessible by the manager (authenticated user) ***
                 const collectionPath = `artifacts/${appId}/users/${userId}/orders`;
