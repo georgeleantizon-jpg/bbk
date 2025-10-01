@@ -992,14 +992,15 @@
                             <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Items</th>
                             <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Add-ons</th>
                             <th class="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider">Total</th>
-                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider rounded-tr-lg">Date</th>
+                            <th class="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">Date</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider rounded-tr-lg">Delivered</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                         ${orders.map(order => `
                             <tr class="dashboard-table-row">
                                 <td class="px-3 py-4 text-sm text-gray-900 font-semibold">
-                                    ${order.name}<br><span class="text-xs text-gray-500">${order.id.substring(0, 8)}...</span>
+                                    ${order.name || "No Name"}
                                 </td>
                                 <td class="px-3 py-4 text-xs text-gray-700">
                                     <ul class="list-disc list-inside space-y-0.5">
@@ -1016,6 +1017,10 @@
                                 </td>
                                 <td class="px-3 py-4 text-xs text-gray-500">
                                     ${formatDate(order.timestamp)}
+                                </td>
+                                <td class="px-3 py-4 text-center">
+                                    <input type="checkbox" ${order.delivered ? "checked" : ""} 
+                                        onchange="window.app.toggleDelivered('${order.id}', this.checked)">
                                 </td>
                             </tr>
                         `).join('')}
@@ -1106,6 +1111,22 @@
                 showMessage('Submission Failed', `There was an error processing your order. Please check the console for details.`, 'continue');
             }
         }
+
+        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        async function toggleDelivered(orderId, delivered) {
+          if (!db) return;
+          try {
+            const ref = doc(db, `artifacts/${appId}/users/${userId}/orders/${orderId}`);
+            await setDoc(ref, { delivered }, { merge: true });
+            console.log(`Order ${orderId} updated: delivered = ${delivered}`);
+          } catch (e) {
+            console.error("Error updating delivered status:", e);
+          }
+        }
+
+        window.app.toggleDelivered = toggleDelivered;
+
         
         // --- APP INITIALIZATION AND EXPORT ---
         
