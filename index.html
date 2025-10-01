@@ -999,8 +999,12 @@
                         ${orders.map(order => `
                             <tr class="dashboard-table-row">
                                 <td class="px-3 py-4 text-sm text-gray-900 font-semibold">
-                                    ${order.name || "No Name"}
+                                    ${order.name && order.name.trim() !== "" ? order.name : "(No Name Provided)"}
+                                    <div class="text-xs text-gray-500">ID: ${order.id}</div>
+                                    ${order.gradeSection ? `<div class="text-xs text-gray-500">Grade: ${order.gradeSection}</div>` : ""}
+                                    ${order.fbLink ? `<div class="text-xs"><a href="${order.fbLink}" target="_blank" class="text-blue-600 underline">FB Profile</a></div>` : ""}
                                 </td>
+
                                 <td class="px-3 py-4 text-xs text-gray-700">
                                     <ul class="list-disc list-inside space-y-0.5">
                                         ${order.items.map(item => `
