@@ -53,7 +53,7 @@
 
     const APP_CONTAINER = document.getElementById('content-area');
     const authInfoEl = document.getElementById('auth-info');
-    const MANAGER_KEY = "1234";
+    const MANAGER_KEY = "1234"; // Manager dashboard PIN
 
     // --- APP STATE ---
     let currentStep = 'mode_selection';
@@ -64,10 +64,15 @@
       fbLink: '',
       phone: '',
       gradeSection: '',
-      customization: { dimension: null, photoFileName: null, price: 0 },
       calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
       timestamp: new Date().toISOString()
     };
+
+    const BASE_PRICES = { "2D": 500, "3D": 1500 };
+    const ADD_ONS = [
+      { id: 'delivery', name: 'Standard Delivery', price: 150 },
+      { id: 'custom_card', name: 'Custom Message Card', price: 50 }
+    ];
 
     // --- FIREBASE INIT ---
     function initializeFirebase() {
@@ -75,9 +80,7 @@
       const app = initializeApp(firebaseConfig);
       db = getFirestore(app);
       auth = getAuth(app);
-      onAuthStateChanged(auth, (user) => {
-        if (user) { userId = user.uid; setAuthStatus('ready'); }
-      });
+      onAuthStateChanged(auth, (user) => { if (user) { userId = user.uid; setAuthStatus('ready'); } });
       signInAnonymously(auth).catch(e => setAuthStatus('auth_failed', e.message));
     }
 
@@ -89,42 +92,57 @@
       else authInfoEl.innerHTML = `<p class="text-gray-400">Connecting...</p>`;
     }
 
-    // --- STEP 3: DETAILS FORM ---
+    // --- STEP 1: ORDER BUILDER ---
+    function renderModeSelection() {
+      APP_CONTAINER.innerHTML = `
+        <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 1: Build Your Order</h3>
+        <p>Select product type (2D/3D) and add items.</p>
+        <button onclick="window.app.selectStep('addons')" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold">Proceed →</button>
+      `;
+      currentStep = 'mode_selection';
+    }
+
+    // --- STEP 2: ADD-ONS ---
+    function renderAddOnsSelection() {
+      APP_CONTAINER.innerHTML = `
+        <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 2: Choose Add-ons</h3>
+        ${ADD_ONS.map(a => `
+          <div>
+            <input type="checkbox" id="${a.id}" onchange="orderData.addOns['${a.id}']=this.checked">
+            <label for="${a.id}">${a.name} - ₱${a.price}</label>
+          </div>`).join("")}
+        <button onclick="window.app.selectStep('details')" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold">Next →</button>
+      `;
+      currentStep = 'addons';
+    }
+
+    // --- STEP 3: CONTACT DETAILS (UPDATED) ---
     function renderDetailsForm() {
       APP_CONTAINER.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-2">
-            <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 3: Contact & Delivery Details</h3>
-            <form id="details-form" onsubmit="event.preventDefault(); window.app.selectStep('confirmation')">
-              <div class="space-y-6 bg-white p-6 rounded-xl shadow-md border border-gray-200">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700">Full Name</label>
-                    <input type="text" value="${orderData.name}" required oninput="orderData.name=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700">FB Profile Link</label>
-                    <input type="url" value="${orderData.fbLink}" required oninput="orderData.fbLink=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
-                  </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700">Phone Number</label>
-                    <input type="tel" value="${orderData.phone}" required oninput="orderData.phone=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700">Grade Level & Section</label>
-                    <input type="text" value="${orderData.gradeSection}" required oninput="orderData.gradeSection=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
-                  </div>
-                </div>
+        <h3 class="text-2xl font-semibold mb-8 text-gray-800">Step 3: Contact & Delivery Details</h3>
+        <form onsubmit="event.preventDefault(); window.app.selectStep('confirmation')">
+          <div class="space-y-6 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Full Name</label>
+                <input type="text" required value="${orderData.name}" oninput="orderData.name=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
               </div>
-              <button type="submit" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg">Review & Confirm Order →</button>
-            </form>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">FB Profile Link</label>
+                <input type="url" required value="${orderData.fbLink}" oninput="orderData.fbLink=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Phone Number</label>
+                <input type="tel" required value="${orderData.phone}" oninput="orderData.phone=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Grade Level & Section</label>
+                <input type="text" required value="${orderData.gradeSection}" oninput="orderData.gradeSection=this.value" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
+              </div>
+            </div>
           </div>
-          <div class="lg:col-span-1">
-            <div id="order-summary-container"></div>
-          </div>
-        </div>
+          <button type="submit" class="mt-6 btn-primary px-6 py-3 rounded-lg font-semibold w-full text-lg">Review & Confirm →</button>
+        </form>
       `;
       currentStep = 'details';
     }
@@ -133,16 +151,13 @@
     function renderConfirmation() {
       APP_CONTAINER.innerHTML = `
         <h3 class="text-2xl font-semibold text-center mb-8 text-gray-800">Step 4: Confirm Your Order</h3>
-        <div class="max-w-3xl mx-auto">
-          <div class="bg-gray-50 p-6 rounded-xl space-y-4 mb-8 border">
-            <p class="text-lg font-bold">Contact & Order Details:</p>
-            <p><strong>Name:</strong> ${orderData.name}</p>
-            <p><strong>FB Profile:</strong> <a href="${orderData.fbLink}" target="_blank" class="text-blue-600">${orderData.fbLink}</a></p>
-            <p><strong>Phone:</strong> ${orderData.phone}</p>
-            <p><strong>Grade & Section:</strong> ${orderData.gradeSection}</p>
-          </div>
-          <button onclick="window.app.submitOrder()" class="btn-primary px-6 py-4 rounded-lg font-bold w-full text-xl shadow-lg hover:shadow-xl">Submit Pre-Order</button>
+        <div class="bg-gray-50 p-6 rounded-xl space-y-4 mb-8 border">
+          <p><strong>Name:</strong> ${orderData.name}</p>
+          <p><strong>FB Profile:</strong> <a href="${orderData.fbLink}" class="text-blue-600" target="_blank">${orderData.fbLink}</a></p>
+          <p><strong>Phone:</strong> ${orderData.phone}</p>
+          <p><strong>Grade & Section:</strong> ${orderData.gradeSection}</p>
         </div>
+        <button onclick="window.app.submitOrder()" class="btn-primary px-6 py-4 rounded-lg font-bold w-full text-xl">Submit Order</button>
       `;
       currentStep = 'confirmation';
     }
@@ -153,14 +168,31 @@
       const collectionPath = `artifacts/buobuo-ka-orders/users/${userId}/orders`;
       await addDoc(collection(db, collectionPath), { ...orderData, delivered: false, timestamp: new Date().toISOString() });
       alert("✅ Order submitted!");
-      orderData = { items: [], addOns: {}, name: '', fbLink: '', phone: '', gradeSection: '', customization: {}, calculations: {}, timestamp: new Date().toISOString() };
-      renderDetailsForm();
+      renderModeSelection();
     }
 
     // --- MANAGER DASHBOARD ---
     function renderOrderDashboard() {
       APP_CONTAINER.innerHTML = `
         <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Manager Dashboard</h3>
+        <div class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg border text-center">
+          <p class="mb-4">Enter Manager Key (PIN: ${MANAGER_KEY})</p>
+          <input type="password" id="manager-key-input" maxlength="4" class="w-full text-3xl pin-input border p-3 rounded-lg">
+          <button onclick="window.app.authenticateDashboard()" class="btn-primary px-6 py-3 mt-4 rounded-lg w-full">Access Dashboard</button>
+          <p id="dashboard-status" class="mt-4 text-sm text-red-600"></p>
+        </div>
+      `;
+    }
+
+    function authenticateDashboard() {
+      const keyInput = document.getElementById('manager-key-input').value;
+      if (keyInput === MANAGER_KEY) renderOrderDashboardContent();
+      else document.getElementById('dashboard-status').textContent = "Invalid PIN";
+    }
+
+    function renderOrderDashboardContent() {
+      APP_CONTAINER.innerHTML = `
+        <h3 class="text-2xl font-semibold mb-6 text-gray-800 text-center">📊 Orders</h3>
         <div id="dashboard-content" class="bg-white rounded-xl shadow-inner p-4 overflow-x-auto min-h-[300px]"></div>
         <div class="mt-4 text-right">
           <button onclick="window.app.exportOrdersToCSV()" class="btn-primary px-4 py-2 rounded-lg font-semibold shadow">⬇️ Export CSV</button>
@@ -226,10 +258,15 @@
     }
 
     // --- NAVIGATION ---
-    function selectStep(step) { if (step==="details") renderDetailsForm(); else if (step==="confirmation") renderConfirmation(); }
-    window.onload = () => { initializeFirebase(); renderDetailsForm(); }
+    function selectStep(step) {
+      if (step==="mode_selection") renderModeSelection();
+      else if (step==="addons") renderAddOnsSelection();
+      else if (step==="details") renderDetailsForm();
+      else if (step==="confirmation") renderConfirmation();
+    }
 
-    window.app = { selectStep, renderDetailsForm, renderOrderDashboard, submitOrder, exportOrdersToCSV, toggleDelivered };
+    window.onload = () => { initializeFirebase(); renderModeSelection(); }
+    window.app = { selectStep, renderModeSelection, renderAddOnsSelection, renderDetailsForm, renderConfirmation, submitOrder, renderOrderDashboard, authenticateDashboard, exportOrdersToCSV, toggleDelivered };
   </script>
 </body>
 </html>
