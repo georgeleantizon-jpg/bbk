@@ -1000,8 +1000,9 @@
                                     ${order.name && order.name.trim() !== "" ? order.name : "(No Name Provided)"}
                                     <div class="text-xs text-gray-500">ID: ${order.id}</div>
                                     ${order.gradeSection ? `<div class="text-xs text-gray-500">Grade: ${order.gradeSection}</div>` : ""}
-                                    ${order.fbLink ? `<div class="text-xs"><a href="${order.fbLink}" target="_blank" class="text-blue-600 underline">FB Profile</a></div>` : ""}
+                                    ${order.fbLink ? `<div class="text-xs"><a href="${order.fbLink}" target="_blank" class="text-blue-600 underline">FB</a></div>` : ""}
                                 </td>
+
 
                                 <td class="px-3 py-4 text-xs text-gray-700">
                                     <ul class="list-disc list-inside space-y-0.5">
@@ -1103,7 +1104,20 @@
                     );
                     
                     // Reset for new order
-                    orderData = { items: [], addOns: {}, name: '', email: '', phone: '', address: '', customization: { dimension: null, photoFileName: null, price: 0 }, calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 }, timestamp: new Date().toISOString() };
+                    let orderData = {
+                        items: [],
+                        addOns: {},
+                        name: '',
+                        fbLink: '',
+                        gradeSection: '',
+                        email: '',
+                        phone: '',
+                        address: '',
+                        customization: { dimension: null, photoFileName: null, price: 0 },
+                        calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
+                        timestamp: new Date().toISOString()
+                    };
+
                     document.getElementById('message-button').onclick = () => { hideMessage(); selectStep('mode_selection'); };
                 }).catch((error) => {
                      console.error("Error submitting order:", error);
