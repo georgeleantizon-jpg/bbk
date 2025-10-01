@@ -560,6 +560,11 @@
                 <p class="text-sm text-gray-600 mb-6">Upload your own design or photo. We accept high-resolution JPEG or PNG files.</p>
                 
                 <div class="space-y-4">
+                    <p class="text-sm text-gray-600 mb-2">
+                       Please upload your design to Google Drive and paste the shareable link here. 
+                       Make sure the file is set to "Anyone with the link can view".
+                    </p>
+
                     <label class="block text-sm font-medium text-gray-700">Select Dimension:</label>
                     <select id="custom-dimension" onchange="window.app.updateCustomization(this.value)" 
                             class="block w-full md:w-1/2 p-3 border border-gray-300 bg-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
@@ -567,11 +572,13 @@
                         <option value="3D" ${dimension === '3D' ? 'selected' : ''}>3D Engraving (${formatCurrency(BASE_PRICES['3D'])})</option>
                     </select>
 
-                    <label class="block text-sm font-medium text-gray-700 pt-4">Upload Design (JPEG/PNG only):</label>
-                    <input type="file" id="custom-file-upload" accept=".jpg, .jpeg, .png" onchange="window.app.handleCustomFileUpload(event)"
-                           class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                    
-                    <p id="file-status" class="text-sm italic text-gray-500">No file selected.</p>
+                    <label class="block text-sm font-medium text-gray-700 pt-4">Google Drive Link to Your Design:</label>
+                    <input type="url" id="custom-file-link" placeholder="https://drive.google.com/..." 
+                        oninput="window.app.handleCustomLinkInput(this.value)"
+                        class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+
+                    <p id="file-status" class="text-sm italic text-gray-500">No link provided.</p>
+
                 </div>
 
                 <div id="custom-controls" class="mt-8 pt-4 border-t border-gray-300">
@@ -615,33 +622,25 @@
             }
         }
 
-        function handleCustomFileUpload(event) {
-            const file = event.target.files[0];
+        function handleCustomLinkInput(link) {
             const fileStatusEl = document.getElementById('file-status');
             const addButton = document.getElementById('add-custom-btn');
 
-            if (file) {
-                if (file.type.startsWith('image/') && (file.type.includes('jpeg') || file.type.includes('png'))) {
-                    orderData.customization.photoFileName = file.name;
-                    fileStatusEl.textContent = `Selected: ${file.name}`;
-                    fileStatusEl.classList.remove('text-red-500');
-                    fileStatusEl.classList.add('text-green-600');
-                    addButton.disabled = false;
-                } else {
-                    orderData.customization.photoFileName = null;
-                    fileStatusEl.textContent = "Error: Please upload a JPEG or PNG image.";
-                    fileStatusEl.classList.remove('text-green-600');
-                    fileStatusEl.classList.add('text-red-500');
-                    addButton.disabled = true;
-                }
+            if (link && link.startsWith("http")) {
+                orderData.customization.photoFileName = link; // store the Drive link instead of file
+                fileStatusEl.textContent = `Link provided: ${link}`;
+                fileStatusEl.classList.remove('text-red-500');
+                fileStatusEl.classList.add('text-green-600');
+                addButton.disabled = false;
             } else {
                 orderData.customization.photoFileName = null;
-                fileStatusEl.textContent = "No file selected.";
+                fileStatusEl.textContent = "Please enter a valid Google Drive link.";
                 fileStatusEl.classList.remove('text-green-600');
-                fileStatusEl.classList.remove('text-red-500');
+                fileStatusEl.classList.add('text-red-500');
                 addButton.disabled = true;
             }
         }
+
         
         function validateQuantity(input) {
             if (input.value < 1) {
@@ -1005,7 +1004,10 @@
                                 <td class="px-3 py-4 text-xs text-gray-700">
                                     <ul class="list-disc list-inside space-y-0.5">
                                         ${order.items.map(item => `
-                                            <li>${item.quantity}x ${item.dimension} ${item.type} (${item.name.split('(')[0].trim()})</li>
+                                            <li>
+                                                ${item.quantity}x ${item.dimension} ${item.type} 
+                                                (${item.name.includes("http") ? `<a href="${item.name.replace("Custom Design: ", "")}" target="_blank" class="text-blue-600 underline">View Design</a>` : item.name.split('(')[0].trim()})
+                                            </li>
                                         `).join('')}
                                     </ul>
                                 </td>
