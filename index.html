@@ -1079,19 +1079,7 @@
         // ---------------------------------------------------------------------
         // SUBMISSION
         // ---------------------------------------------------------------------
-        let orderData = {
-          items: [],
-          addOns: {},
-          name: '',
-          fbLink: '',
-          gradeSection: '',
-          email: '',
-          phone: '',
-          address: '',
-          customization: { dimension: null, photoFileName: null, price: 0 },
-          calculations: { subtotal: 0, discount: 0, addOnTotal: 0, finalTotal: 0 },
-          timestamp: new Date().toISOString()
-        };
+        
         function submitOrder() {
             if (dbStatus !== 'ready' || !db) {
                 return showMessage('Database Offline', 'Cannot submit order. The database connection failed to fully authenticate. Please check the status message at the bottom of the page.', 'continue');
